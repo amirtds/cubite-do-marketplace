@@ -1,11 +1,11 @@
 {
     "variables": {
       "version": "lilac",
-      "do_api_token": "{{env `DO_API_TOKEN`}}"
+      "do_token": "{{env `DIGITALOCEAN_TOKEN`}}"
     },
     "builders": [{
       "type": "digitalocean",
-      "api_token": "{{user `do_api_token`}}",
+      "api_token": "{{user `do_token`}}",
       "image": "ubuntu-20-04-x64",
       "region": "nyc3",
       "size": "s-4vcpu-8gb",
