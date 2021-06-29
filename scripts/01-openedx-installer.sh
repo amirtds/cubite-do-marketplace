@@ -17,6 +17,7 @@ sed -ri "s/^(\s*)(EDX_PLATFORM_VERSION\s*:\s*('master')\s*$)/\1EDX_PLATFORM_VERS
 sudo /edx/app/edx_ansible/venvs/edx_ansible/bin/ansible-playbook -c local ./openedx_native.yml -i 'localhost,' -e@/edx/app/edx_ansible/my-passwords.yml
 sed -ri "s/^(\s*)(DEFAULT_SITE_THEME\s*:\s*''\s*$)/\1DEFAULT_SITE_THEME: 'cubite-theme'/" /edx/etc/lms.yml
 sed -ri "s/^(\s*)(ENABLE_COMPREHENSIVE_THEMING\s*:\s*false\s*$)/\1ENABLE_COMPREHENSIVE_THEMING: true/" /edx/etc/lms.yml
+sudo /edx/app/edx_ansible/venvs/edx_ansible/bin/ansible-playbook -c local ./openedx_native.yml -i 'localhost,' -e@/edx/app/edx_ansible/my-passwords.yml -t edxapp_cfg --extra-vars "EDXAPP_COMPREHENSIVE_THEME_DIRS=['/edx/var/edxapp/theme'] EDXAPP_LMS_BASE=$(hostname -I | cut -f1 -d' ') EDXAPP_CMS_BASE=$(hostname -I | cut -f1 -d' '):18010"
 cd /edx/var/edxapp/themes
 git clone https://github.com/Cubite-Technologies/theme -b lilac cubite-theme
 /edx/bin/edxapp-update-assets
