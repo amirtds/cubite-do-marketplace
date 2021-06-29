@@ -1,0 +1,31 @@
+{
+    "variables": {
+      "version": "lilac",
+      "do_api_token": "{{env `DO_API_TOKEN`}}"
+    },
+    "builders": [{
+      "type": "digitalocean",
+      "api_token": "{{user `do_api_token`}}",
+      "image": "ubuntu-20-04-x64",
+      "region": "nyc3",
+      "size": "s-4vcpu-8gb",
+      "ssh_username": "root",
+      "snapshot_name": "openedx-{{user `version`}}-{{timestamp}}"
+    }],
+    "provisioners": [{
+      "type": "file",
+      "source": "files/one-click-openedx",
+      "destination": "/etc/update-motd.d/one-click-openedx"
+    }, {
+      "type": "shell",
+      "scripts": [
+        "scripts/01-openedx-installer.sh"
+      ]
+    },{
+      "type": "shell",
+      "scripts": [
+        "scripts/90-cleanup.sh", 
+        "scripts/99-img-check.sh"
+      ]
+    }]
+  }
