@@ -10,6 +10,7 @@
       "region": "nyc3",
       "size": "s-4vcpu-8gb",
       "ssh_username": "root",
+      "droplet_name": "openedx-{{user `version`}}",
       "snapshot_name": "openedx-{{user `version`}}-{{timestamp}}"
     }],
     "provisioners": [{
