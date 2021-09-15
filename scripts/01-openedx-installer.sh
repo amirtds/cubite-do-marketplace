@@ -1,8 +1,8 @@
 #!/bin/bash
 sleep 20
-sudo apt-get update -y
-sudo apt-get upgrade -y
-wget https://raw.githubusercontent.com/edx/configuration/open-release/lilac.master/util/install/ansible-bootstrap.sh -O - | sudo bash
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+wget https://raw.githubusercontent.com/cubiteDevops/do-edx-configs/main/ansible-bootstrap.sh -O - | sudo bash
 mkdir edx-configs && cd edx-configs
 sudo wget https://raw.githubusercontent.com/edx/configuration/open-release/lilac.master/playbooks/sample_vars/passwords.yml
 sudo wget https://raw.githubusercontent.com/cubiteDevops/do-edx-configs/main/vars.yml

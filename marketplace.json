@@ -1,9 +1,10 @@
 {
-    "variables": {
-      "version": "lilac",
-      "do_token": "{{env `DIGITALOCEAN_TOKEN`}}"
-    },
-    "builders": [{
+  "variables": {
+    "version": "lilac",
+    "do_token": "{{env `DIGITALOCEAN_TOKEN`}}"
+  },
+  "builders": [
+    {
       "type": "digitalocean",
       "api_token": "{{user `do_token`}}",
       "image": "ubuntu-20-04-x64",
@@ -12,21 +13,21 @@
       "ssh_username": "root",
       "droplet_name": "openedx-{{user `version`}}",
       "snapshot_name": "openedx-{{user `version`}}-{{timestamp}}"
-    }],
-    "provisioners": [{
+    }
+  ],
+  "provisioners": [
+    {
       "type": "file",
       "source": "files/one-click-openedx",
       "destination": "/etc/update-motd.d/one-click-openedx"
-    }, {
+    },
+    {
       "type": "shell",
-      "scripts": [
-        "scripts/01-openedx-installer.sh"
-      ]
-    },{
+      "scripts": ["scripts/01-openedx-installer.sh"]
+    },
+    {
       "type": "shell",
-      "scripts": [
-        "scripts/90-cleanup.sh", 
-        "scripts/99-img-check.sh"
-      ]
-    }]
-  }
+      "scripts": ["scripts/90-cleanup.sh", "scripts/99-img-check.sh"]
+    }
+  ]
+}
