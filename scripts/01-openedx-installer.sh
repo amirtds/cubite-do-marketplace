@@ -2,7 +2,7 @@
 
 
 # Sleep to wait for any system startup tasks
-sleep 20
+sleep 120
 
 # Set front-end to be non-interactive
 export DEBIAN_FRONTEND=noninteractive
@@ -23,6 +23,7 @@ sudo apt-get install -y \
     curl \
     gnupg \
     lsb-release
+
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
