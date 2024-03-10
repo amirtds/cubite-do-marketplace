@@ -1,5 +1,6 @@
 !/bin/bash
 
+
 # Sleep to wait for any system startup tasks
 sleep 20
 
@@ -39,6 +40,7 @@ sudo usermod -aG docker $USER
 # Install Tutor as per the official documentation
 sudo pip install "tutor[full]"
 
+
 # Post-installation: re-login or use newgrp command to avoid logging out and back in
 # newgrp docker
 
@@ -46,3 +48,4 @@ sudo pip install "tutor[full]"
 # Pre-fill the interactive questions with echo and pipe it to tutor local quickstart
 echo -e 'y\nwww.myopenedx.com\nstudio.www.myopenedx.com\nMy Open edX\ncontact@www.myopenedx.com\nen\nN' | tutor local launch
 sudo apt-get purge droplet-agent -y
+
