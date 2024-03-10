@@ -7,8 +7,8 @@ cat <<EOF
 ********************************************************************************
 Welcome to the Open edX Droplet!
 In the browser, you can visit openedX instance at http://$myip/
-For documentation visit: https://cubite.gitbook.io/cubite-do-1-click-installer/
-For help and more info visit: https://cubite.io
+For documentation visit: https://docs.tutor.edly.io/index.html
+For help and more info visit email us at hello@cubite.io
 ********************************************************************************
 To delete this message of the day: rm -rf $(readlink -f ${0})
 EOF
