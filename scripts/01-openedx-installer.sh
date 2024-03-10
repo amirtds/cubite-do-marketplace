@@ -1,17 +1,12 @@
-#!/bin/bash
+!/bin/bash
+
 
 # Sleep to wait for any system startup tasks
-sleep 20
+sleep 120
 
 # Set front-end to be non-interactive
 export DEBIAN_FRONTEND=noninteractive
 
-# Configure needrestart to ignore ssh related services
-sudo tee /etc/needrestart/needrestart.conf <<EOF
-\$nrconf{restart} = 'a';
-# Define a blacklist of services that should not be restarted
-\$nrconf{blacklist} = qr(^ssh$);
-EOF
 
 # Update and upgrade the system packages without any prompts
 sudo -E apt-get update -y
@@ -28,6 +23,7 @@ sudo apt-get install -y \
     curl \
     gnupg \
     lsb-release
+
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
@@ -43,7 +39,8 @@ sudo chmod +x /usr/local/bin/docker-compose
 sudo usermod -aG docker $USER
 
 # Install Tutor as per the official documentation
-sudo pip install "tutor[full]" --break-system-packages
+sudo pip install "tutor[full]"
+
 
 # Post-installation: re-login or use newgrp command to avoid logging out and back in
 # newgrp docker
@@ -51,3 +48,5 @@ sudo pip install "tutor[full]" --break-system-packages
 # Enable and start the Tutor web UI as a service
 # Pre-fill the interactive questions with echo and pipe it to tutor local quickstart
 echo -e 'y\nwww.myopenedx.com\nstudio.www.myopenedx.com\nMy Open edX\ncontact@www.myopenedx.com\nen\nN' | tutor local launch
+sudo apt-get purge droplet-agent -y
+
