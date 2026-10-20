@@ -44,15 +44,19 @@ codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}
 # Security gate. The stock overhangio/openedx images of Tutor 22.0.0 to 22.0.2
 # lack the release/verawood fixes for GHSA-c6xg-fh3c-vvhh (stored XSS through
 # Studio uploads, critical) and GHSA-c6fp-f54c-6cv4 (forum API without
-# permission checks). A build with those versions must ship a patched openedx
-# image, named in files/opt/cubite/openedx-image.env. Only a test build may
-# skip it (packer build -var allow_unpatched_openedx=true), and its snapshot
-# name then ends in -UNPATCHED-TEST, so that it is never submitted by mistake.
+# permission checks). A build with those versions must ship Cubite's patched
+# openedx image, pinned by digest in files/opt/cubite/openedx-image.env. The
+# digest comes from the summary of the "Patched openedx image" workflow run,
+# which checks the image for the fixes before it publishes it. Only a test
+# build may skip the gate (packer build -var allow_unpatched_openedx=true), and
+# its snapshot name then ends in -UNPATCHED-TEST, so that it is never submitted
+# by mistake. First boot and the wizard accept exactly the same pattern.
+OPENEDX_IMAGE_PATTERN='^ghcr\.io/amirtds/cubite-openedx@sha256:[0-9a-f]{64}$'
 openedx_image=""
 if [ -e "$IMAGE_ENV" ]; then
   openedx_image="$(sed -n 's/^OPENEDX_IMAGE=//p' "$IMAGE_ENV" | head -n 1)"
-  [[ "$openedx_image" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]] \
-    || die "${IMAGE_ENV} must hold the line OPENEDX_IMAGE=<registry>/<name>:<tag>; first boot and the wizard ignore it as it is"
+  [[ "$openedx_image" =~ $OPENEDX_IMAGE_PATTERN ]] \
+    || die "${IMAGE_ENV} must hold the line OPENEDX_IMAGE=ghcr.io/amirtds/cubite-openedx@sha256:<digest>, copied from the summary of the Patched openedx image workflow run"
 fi
 case "$TUTOR_VERSION" in
   22.0.0 | 22.0.1 | 22.0.2)
@@ -61,8 +65,12 @@ case "$TUTOR_VERSION" in
     elif [ "${CUBITE_ALLOW_UNPATCHED:-false}" = "true" ]; then
       log "Security gate: TEST BUILD with the unpatched stock openedx image. Never submit this snapshot."
     else
-      die "security gate: overhangio/openedx:${TUTOR_VERSION} lacks the fixes for GHSA-c6xg-fh3c-vvhh and GHSA-c6fp-f54c-6cv4; bump Tutor to a release that has them, or add files/opt/cubite/openedx-image.env (test builds only: -var allow_unpatched_openedx=true)"
+      die "security gate: overhangio/openedx:${TUTOR_VERSION} lacks the fixes for GHSA-c6xg-fh3c-vvhh and GHSA-c6fp-f54c-6cv4; bump Tutor to a release that has them, or pin Cubite's patched image in files/opt/cubite/openedx-image.env (test builds only: -var allow_unpatched_openedx=true)"
     fi
+    ;;
+  *)
+    [ -z "$openedx_image" ] \
+      || die "${IMAGE_ENV} pins an openedx image built with Tutor 22.0.2, but this build installs Tutor ${TUTOR_VERSION}: delete the file if this release carries the fixes, or build and pin an image for it"
     ;;
 esac
 
@@ -170,6 +178,18 @@ docker --version
 docker compose version
 containerd --version
 
+if [ -n "$openedx_image" ]; then
+  log "Checking that Droplets can pull ${openedx_image} without credentials"
+  # A throwaway Docker client config: the check runs without a login, like
+  # each Droplet's first boot, and leaves nothing in /root/.docker.
+  probe_config="$(mktemp -d)"
+  if ! env -u DOCKER_AUTH_CONFIG DOCKER_CONFIG="$probe_config" docker manifest inspect "$openedx_image" > /dev/null; then
+    rm -rf "$probe_config"
+    die "Droplets cannot pull ${openedx_image} without credentials: make the ghcr.io package public, or fix the digest"
+  fi
+  rm -rf "$probe_config"
+fi
+
 log "Installing Tutor ${TUTOR_VERSION} and its plugins in ${TUTOR_VENV}"
 for f in requirements-build.txt requirements-tutor.txt; do
   [ -f "${CUBITE_DIR}/${f}" ] || die "${CUBITE_DIR}/${f} is missing (it is uploaded from files/opt/cubite/)"
@@ -187,6 +207,7 @@ python3 -m venv "$TUTOR_VENV"
   -r "${CUBITE_DIR}/requirements-tutor.txt"
 ln -sfn "${TUTOR_VENV}/bin/tutor" /usr/local/bin/tutor
 ln -sfn "${CUBITE_DIR}/openedx-setup" /usr/local/bin/openedx-setup
+ln -sfn "${CUBITE_DIR}/openedx-image-check" /usr/local/bin/openedx-image-check
 
 installed_tutor="$("${TUTOR_VENV}/bin/python" -c 'import importlib.metadata as m; print(m.version("tutor"))')"
 [ "$installed_tutor" = "$TUTOR_VERSION" ] || die "installed Tutor is ${installed_tutor}, expected ${TUTOR_VERSION}"
@@ -209,13 +230,16 @@ log "Installing the first-boot script, the setup wizard and the message of the d
 # Packer keeps the local file mode, so set the modes here as well.
 for f in /etc/update-motd.d/99-one-click \
          /var/lib/cloud/scripts/per-instance/001_onboot \
-         "${CUBITE_DIR}/openedx-setup"; do
+         "${CUBITE_DIR}/openedx-setup" \
+         "${CUBITE_DIR}/openedx-image-check"; do
   [ -f "$f" ] || die "${f} is missing (it is uploaded from files/)"
   chown root:root "$f"
   chmod 0755 "$f"
 done
+[ -f "${CUBITE_DIR}/tutor-plugins/cubitefixes.yml" ] \
+  || die "${CUBITE_DIR}/tutor-plugins/cubitefixes.yml is missing (it is uploaded from files/opt/cubite/)"
 chown -R root:root "$CUBITE_DIR"
-chmod 0644 "$CUBITE_DIR"/requirements-*
+chmod 0644 "$CUBITE_DIR"/requirements-* "${CUBITE_DIR}/tutor-plugins/cubitefixes.yml"
 # Drop Finder metadata in case the build ran from a Mac working tree.
 find /etc /opt /var/lib/cloud -name .DS_Store -type f -delete
 

@@ -23,6 +23,8 @@ LOG_DIR=/var/log/cubite-openedx
 LOG_FILE="${LOG_DIR}/firstboot.log"
 STATUS_FILE="${STATE_DIR}/firstboot.status"
 IMAGE_ENV=/opt/cubite/openedx-image.env
+# The same pattern as the installer's security gate and the setup wizard.
+OPENEDX_IMAGE_PATTERN='^ghcr\.io/amirtds/cubite-openedx@sha256:[0-9a-f]{64}$'
 TUTOR=/opt/tutor/venv/bin/tutor
 # The images a fresh Tutor 22.0.2 platform uses with its default plugins
 # (mfe and indigo). The forum plugin adds no image of its own.
@@ -44,13 +46,13 @@ set_status() { printf '%s\n' "$1" > "$STATUS_FILE"; }
 set_status pulling
 log "First boot started (system booted at $(uptime -s))"
 
-# Optional: a patched openedx image built by Cubite (security path b). The
-# file holds one line, OPENEDX_IMAGE=<registry>/<name>:<tag>, and only exists
-# in images built that way. The setup wizard reads the same file.
+# Optional: Cubite's patched openedx image. The file holds the line
+# OPENEDX_IMAGE=ghcr.io/amirtds/cubite-openedx@sha256:<digest> and only exists
+# in images built with it. The setup wizard reads the same file.
 openedx_image=""
 if [ -r "$IMAGE_ENV" ]; then
   openedx_image="$(sed -n 's/^OPENEDX_IMAGE=//p' "$IMAGE_ENV" | head -n 1)"
-  if ! [[ "$openedx_image" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]]; then
+  if ! [[ "$openedx_image" =~ $OPENEDX_IMAGE_PATTERN ]]; then
     log "Ignoring ${IMAGE_ENV}: OPENEDX_IMAGE is missing or malformed"
     openedx_image=""
   fi
@@ -77,14 +79,17 @@ if [ "$docker_ready" -ne 1 ]; then
   exit 0
 fi
 
-# timeout stops the whole process group, so the docker clients stop too.
+# timeout stops the whole process group, so the docker clients stop too. A
+# failed pull of the patched image does not stop the other pulls.
 pull_images() {
+  local rc=0
   if [ -n "$openedx_image" ]; then
-    timeout 1200 docker pull "$openedx_image" || return 1
-    timeout 1800 "$TUTOR" images pull "${IMAGES[@]:1}"
+    timeout 1200 docker pull "$openedx_image" || rc=1
+    timeout 1800 "$TUTOR" images pull "${IMAGES[@]:1}" || rc=1
   else
-    timeout 1800 "$TUTOR" images pull "${IMAGES[@]}"
+    timeout 1800 "$TUTOR" images pull "${IMAGES[@]}" || rc=1
   fi
+  return "$rc"
 }
 
 result=pull-failed

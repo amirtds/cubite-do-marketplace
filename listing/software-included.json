@@ -4,7 +4,7 @@
   "softwareIncluded": [
     {
       "name": "Open edX® platform",
-      "version": "Verawood (release/verawood.1)",
+      "version": "Verawood (release/verawood.1 with security fixes)",
       "releaseNotes": "https://docs.openedx.org/en/latest/community/release_notes/verawood.html",
       "website": "https://openedx.org",
       "licenseType": "AGPL-3.0",

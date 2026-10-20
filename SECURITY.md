@@ -31,7 +31,7 @@ Only the latest image version on the DigitalOcean Marketplace is supported. Toda
 
 - No secrets, Tutor configuration or Docker images are baked into the snapshot. Each Droplet generates its own secrets the first time its owner runs the setup wizard.
 - Tutor and its dependencies are installed with pip hash checking, and Docker comes from Docker's signed apt repository, held on the 29.x line that Docker still patches.
-- The build fails if the openedx image would lack known critical fixes: with Tutor 22.0.0 to 22.0.2 it needs a patched image, and only test builds, whose snapshots are named `-UNPATCHED-TEST` and never submitted, can skip that.
+- The build fails if the openedx image would lack known critical fixes: with Tutor 22.0.0 to 22.0.2 it needs Cubite's patched image, pinned by digest and public, and only test builds, whose snapshots are named `-UNPATCHED-TEST` and never submitted, can skip that.
 - Only ports 22, 80 and 443 are open, and Ubuntu security updates install automatically.
 - Logs that can contain passwords, the Tutor configuration and the admin password file are readable by root only.
 

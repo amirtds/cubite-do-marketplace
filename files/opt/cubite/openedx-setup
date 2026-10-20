@@ -30,6 +30,9 @@ FIRSTBOOT_STATUS_FILE="${STATE_DIR}/firstboot.status"
 PASSWORD_FILE=/root/.digitalocean_password
 LOCK_FILE=/run/lock/cubite-openedx-setup.lock
 IMAGE_ENV=/opt/cubite/openedx-image.env
+# The same pattern as the installer's security gate and first boot.
+OPENEDX_IMAGE_PATTERN='^ghcr\.io/amirtds/cubite-openedx@sha256:[0-9a-f]{64}$'
+FIXES_PLUGIN=/opt/cubite/tutor-plugins/cubitefixes.yml
 TUTOR=/opt/tutor/venv/bin/tutor
 TUTOR_CONFIG=/root/.local/share/tutor/config.yml
 TUTOR_ENV_DIR=/root/.local/share/tutor/env
@@ -429,9 +432,17 @@ write_password_file() {
 write_summary() {
   local image_note=""
   if [ -n "$openedx_image" ]; then
-    image_note="This Droplet runs Cubite's patched openedx image (DOCKER_IMAGE_OPENEDX). When
-you move to a Tutor release that includes its fixes, also run
-tutor config save --unset DOCKER_IMAGE_OPENEDX before tutor local launch -I.
+    image_note="
+Security: this Droplet runs Cubite's patched openedx image, Tutor 22.0.2's
+image rebuilt with three upstream fixes (GHSA-c6xg-fh3c-vvhh,
+GHSA-c6fp-f54c-6cv4 and GHSA-g266-6v7f-j465), set as DOCKER_IMAGE_OPENEDX.
+After upgrading Tutor, run openedx-image-check before tutor local launch -I:
+it moves the Droplet back to Tutor's own image once that image has the fixes.
+To build your own openedx image (extra XBlocks, a theme), first name it:
+  tutor config save --set DOCKER_IMAGE_OPENEDX=<registry>/<name>:<tag>
+The enabled cubitefixes plugin keeps the fixes in your build. Scripts in
+uploaded HTML and SVG course files, JSInput problems included, no longer run.
+
 "
   fi
   cat > "$SUMMARY_FILE" <<EOF
@@ -569,7 +580,7 @@ fi
 openedx_image=""
 if [ -r "$IMAGE_ENV" ]; then
   openedx_image="$(sed -n 's/^OPENEDX_IMAGE=//p' "$IMAGE_ENV" | head -n 1)"
-  [[ "$openedx_image" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]] || openedx_image=""
+  [[ "$openedx_image" =~ $OPENEDX_IMAGE_PATTERN ]] || openedx_image=""
 fi
 
 # Questions. Earlier answers (from a paused or failed run) are the defaults.
@@ -656,6 +667,21 @@ run_logged "tutor config save" tutor_run config save "${set_args[@]}" \
   || fail "saving the Tutor configuration failed."
 run_logged "tutor plugins enable forum" tutor_run plugins enable forum \
   || fail "enabling the forum plugin failed."
+if [ -n "$openedx_image" ]; then
+  # The Tutor plugin that put the fixes into the patched image. Enabled, it
+  # keeps them in any openedx image built on this Droplet (see the summary).
+  printf '\n### %s tutor plugins printroot\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$SETUP_LOG"
+  plugins_root="$(tutor_run plugins printroot 2>>"$SETUP_LOG")" && [ -n "$plugins_root" ] \
+    && install -d -m 0700 "$plugins_root" \
+    && install -m 0600 "$FIXES_PLUGIN" "${plugins_root}/cubitefixes.yml" \
+    || fail "installing the cubitefixes plugin failed."
+  # Enabling a YAML plugin that is already enabled renders its patch twice
+  # until the next config save, so a repeated run leaves it as it is.
+  if ! tutor_run config printvalue PLUGINS 2>/dev/null | grep -q -F "'cubitefixes'"; then
+    run_logged "tutor plugins enable cubitefixes" tutor_run plugins enable cubitefixes \
+      || fail "enabling the cubitefixes plugin failed."
+  fi
+fi
 # config.yml holds every secret and no container reads it, so it is root-only.
 # The env files are bind-mounted into containers that run as uid 1000, so
 # they must be readable (/root itself stays 0700). Tutor rewrites files in

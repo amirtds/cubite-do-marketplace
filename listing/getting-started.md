@@ -64,10 +64,11 @@ Ubuntu security updates install automatically. Open edX and Tutor updates and se
 
 ```
 /opt/tutor/venv/bin/pip install --upgrade "tutor[full]>=22.0.0,<23.0.0"
+openedx-image-check
 tutor local launch -I
 ```
 
-If the setup summary says that the Droplet runs Cubite's patched openedx image, run `tutor config save --unset DOCKER_IMAGE_OPENEDX` before `tutor local launch -I` once the new Tutor release includes its fixes.
+This image runs Cubite's patched openedx image: Tutor 22.0.2's image rebuilt with three upstream Open edX security fixes that the Verawood.1 release lacks (GHSA-c6xg-fh3c-vvhh, GHSA-c6fp-f54c-6cv4 and GHSA-g266-6v7f-j465). `openedx-image-check` keeps it until Tutor's own image carries the fixes, then moves the Droplet back to Tutor's image. One of the fixes serves course files with a sandbox policy, so scripts in uploaded HTML or SVG files, JSInput problems included, no longer run. The course waffle flag `course_assets.allow_unsafe_asset_rendering` turns that off for one course, and reopens the vulnerability for it.
 
 ## 8. Support
 
