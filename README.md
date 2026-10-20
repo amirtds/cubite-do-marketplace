@@ -123,8 +123,6 @@ Before submitting, fill in every placeholder. This must print nothing (the patte
 grep -rnE 'T[B]D|GITHUB_[H]OME|\[[y]yyy\]' listing README.md SECURITY.md LICENSE
 ```
 
-The match in `LICENSE` is the copyright line in the appendix of the Apache License, which decision C8 fills with the year and Cubite's legal entity name.
-
 The title uses the ® sign, as the Open edX trademark policy asks for the first and most prominent use. If the Vendor Portal rejects the character, use the title without the platform name (for example `Cubite`), and keep the mark with ® in the summary.
 
 In the Vendor Portal (cloud.digitalocean.com/vendorportal), open the listing, select the tested snapshot (it leaves your account when you submit), paste the texts from [listing/](listing/), add the reason for the update, tick the acknowledgements and submit everything in one submission. A listing that is pending or in review cannot be updated.
@@ -180,6 +178,6 @@ If a rebuild is more than 8 weeks late after a named Open edX release, the listi
 
 ## License
 
-The code in this repository is licensed under the Apache License 2.0 ([LICENSE](LICENSE)). `scripts/90-cleanup.sh` and `scripts/99-img-check.sh` are DigitalOcean's (Apache-2.0) and keep their headers; `scripts/02-ufw-openedx.sh` is adapted from DigitalOcean's `02-ufw-nginx.sh`. Tutor and its plugins (AGPL-3.0) are licensed separately and installed from PyPI during the image build. The Open edX platform (AGPL-3.0) and the other services run from Docker images that each Droplet downloads at first boot, under their own licenses.
+The code in this repository is Copyright 2021-2026 Cubite Technologies Corp and licensed under the Apache License 2.0 ([LICENSE](LICENSE)). `scripts/90-cleanup.sh` and `scripts/99-img-check.sh` are DigitalOcean's (Apache-2.0) and keep their headers; `scripts/02-ufw-openedx.sh` is adapted from DigitalOcean's `02-ufw-nginx.sh`. Tutor and its plugins (AGPL-3.0) are licensed separately and installed from PyPI during the image build. The Open edX platform (AGPL-3.0) and the other services run from Docker images that each Droplet downloads at first boot, under their own licenses.
 
 Open edX is a registered trademark of edX LLC. All Rights Reserved.
