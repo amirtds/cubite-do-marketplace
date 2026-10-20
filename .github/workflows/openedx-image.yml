@@ -1,0 +1,165 @@
+name: Patched openedx image
+
+# Builds Tutor 22.0.2's openedx image (with the indigo theme, as the 1-Click
+# runs it) from the release/verawood.1 tag plus three upstream security fixes
+# that no released Tutor image carries yet, and publishes it on ghcr.io. The
+# 1-Click pins the result by digest in files/opt/cubite/openedx-image.env until
+# a Tutor release includes the fixes.
+
+on:
+  push:
+    branches: [feat/verawood-24-04]
+    paths:
+      - .github/workflows/openedx-image.yml
+      - files/opt/cubite/tutor-plugins/cubitefixes.yml
+      - files/opt/cubite/requirements-build.txt
+      - files/opt/cubite/requirements-tutor.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: openedx-image
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/amirtds/cubite-openedx
+  TUTOR_VERSION: "22.0.2"
+  # release/verawood.1, the edx-platform tag that Tutor 22.0.2 builds.
+  BASE_COMMIT: 9e67d1429d5ab49a36fb9881a26457efeee0bb89
+  # The upstream release/verawood commits that the plugin cherry-picks, oldest
+  # first: GHSA-g266-6v7f-j465 (resource use of the Studio video download),
+  # GHSA-c6xg-fh3c-vvhh (stored XSS through course assets, critical) and
+  # GHSA-c6fp-f54c-6cv4 (openedx-forum 0.4.2.post1, critical). The branch's
+  # other commits stay out: one of them splits Studio search into two indexes,
+  # which Tutor's stock MFE image cannot query.
+  FIXES: >-
+    f657d158c23c7358d20163b9a76330c0c35471fe
+    b5fc56a101a2a1d3fd3c3568d2719680840ca7d2
+    fc8dcdbcc914c4274eed3c5bb7959e8814551f74
+  FORUM_VERSION: 0.4.2.post1
+  PLUGIN_FILE: files/opt/cubite/tutor-plugins/cubitefixes.yml
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    if: github.repository == 'amirtds/cubite-do-marketplace'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Free disk space and add swap
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          docker system prune --all --force > /dev/null
+          if ! swapon --show | grep -q .; then
+            sudo fallocate -l 6G /swapfile-build
+            sudo chmod 600 /swapfile-build
+            sudo mkswap /swapfile-build > /dev/null
+            sudo swapon /swapfile-build
+          fi
+          swapon --show
+          free -h
+          df -h /
+
+      - name: Install Tutor
+        run: |
+          venv="${RUNNER_TEMP}/tutor-venv"
+          python3 -m venv "$venv"
+          # The same hash-pinned files and pip steps as scripts/01-openedx-installer.sh.
+          "${venv}/bin/pip" install --no-cache-dir --disable-pip-version-check \
+            --require-hashes -r files/opt/cubite/requirements-build.txt
+          "${venv}/bin/pip" install --no-cache-dir --disable-pip-version-check \
+            --require-hashes --no-build-isolation --check-build-dependencies \
+            -r files/opt/cubite/requirements-tutor.txt
+          version="$("${venv}/bin/tutor" --version)"
+          echo "$version"
+          [[ "$version" == *"version ${TUTOR_VERSION}" ]]
+          echo "${venv}/bin" >> "$GITHUB_PATH"
+          {
+            echo "TUTOR_ROOT=${RUNNER_TEMP}/tutor-root"
+            echo "TUTOR_PLUGINS_ROOT=${RUNNER_TEMP}/tutor-plugins"
+            # Every run gets its own tag, so a published tag never moves.
+            echo "IMAGE=${IMAGE_NAME}:${TUTOR_VERSION}-indigo-cubite.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure Tutor
+        run: |
+          # The plugin must cherry-pick exactly FIXES, in this order.
+          grep -q -F "git fetch --depth=2 https://github.com/openedx/edx-platform.git ${FIXES} " "$PLUGIN_FILE"
+          grep -q -F "cherry-pick -x ${FIXES}" "$PLUGIN_FILE"
+          mkdir -p "$TUTOR_PLUGINS_ROOT"
+          cp "$PLUGIN_FILE" "${TUTOR_PLUGINS_ROOT}/cubitefixes.yml"
+          # Mirror a Droplet: the default plugins (mfe, indigo) plus forum.
+          tutor config save --set "DOCKER_IMAGE_OPENEDX='${IMAGE}'"
+          tutor plugins enable forum cubitefixes
+          tutor plugins list
+          [[ "$(tutor config printvalue DOCKER_IMAGE_OPENEDX)" == "$IMAGE" ]]
+          [[ "$(tutor config printvalue EDX_PLATFORM_VERSION)" == "release/verawood.1" ]]
+          dockerfile="${TUTOR_ROOT}/env/build/openedx/Dockerfile"
+          sed -n '/^FROM minimal AS code/,/^FROM scratch AS edx-platform/p' "$dockerfile"
+          grep -q -F "cherry-pick -x ${FIXES}" "$dockerfile"
+
+      - name: Build
+        run: |
+          description="Open edX® platform image by Cubite for its DigitalOcean 1-Click: Tutor ${TUTOR_VERSION} (github.com/overhangio/tutor) with tutor-indigo 22.0.0 builds github.com/openedx/openedx-platform tag release/verawood.1 plus the commits in label io.cubite.edx-platform.fixes, cherry-picked by ${PLUGIN_FILE}. Build script: .github/workflows/openedx-image.yml. Both are in github.com/amirtds/cubite-do-marketplace at the revision label's commit. Open edX is a registered trademark of edX LLC."
+          tutor images build openedx --target final --no-registry-cache \
+            --docker-arg="--label=maintainer=Cubite <hello@cubite.io>" \
+            --docker-arg="--label=org.opencontainers.image.vendor=Cubite" \
+            --docker-arg="--label=org.opencontainers.image.title=cubite-openedx" \
+            --docker-arg="--label=org.opencontainers.image.description=${description}" \
+            --docker-arg="--label=org.opencontainers.image.version=${IMAGE##*:}" \
+            --docker-arg="--label=org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --docker-arg="--label=org.opencontainers.image.licenses=AGPL-3.0" \
+            --docker-arg="--label=org.opencontainers.image.source=https://github.com/amirtds/cubite-do-marketplace" \
+            --docker-arg="--label=org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --docker-arg="--label=io.cubite.edx-platform.base=release/verawood.1 ${BASE_COMMIT}" \
+            --docker-arg="--label=io.cubite.edx-platform.fixes=${FIXES}"
+          df -h /
+
+      - name: Check the image
+        run: |
+          docker image inspect "$IMAGE" --format '{{json .Config.Labels}}'
+          in_image() { docker run --rm "$IMAGE" "$@"; }
+          log="$(in_image git log --format='%H %cn %s%n%b' -4)"
+          echo "$log"
+          [[ "$(in_image git rev-parse HEAD~3)" == "$BASE_COMMIT" ]]
+          for sha in $FIXES; do
+            grep -q -F "(cherry picked from commit ${sha})" <<< "$log"
+          done
+          [[ "$(in_image git log -3 --format=%cn | sort -u)" == "Cubite" ]]
+          in_image grep -q -F ALLOW_UNSAFE_ASSET_RENDERING openedx/core/djangoapps/contentserver/views.py
+          in_image grep -q -F 'class VideoDownloadThrottle' cms/djangoapps/contentstore/rest_api/v1/views/videos.py
+          in_image test -d /openedx/themes/indigo
+          in_image python -c 'import importlib.metadata as m; [print(p, m.version(p)) for p in ("openedx-forum", "openedx-scorm-xblock", "edx-submissions", "xblock-drag-and-drop-v2")]'
+          forum="$(in_image python -c 'import importlib.metadata as m; print(m.version("openedx-forum"))')"
+          [[ "$forum" == "$FORUM_VERSION" ]]
+
+      - name: Push
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE" | tee "${RUNNER_TEMP}/push.log"
+          docker logout ghcr.io
+          pinned="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          [[ "$pinned" =~ ^ghcr\.io/amirtds/cubite-openedx@sha256:[0-9a-f]{64}$ ]]
+          grep -q -F "digest: ${pinned#*@}" "${RUNNER_TEMP}/push.log"
+          echo "::notice::OPENEDX_IMAGE=${pinned}"
+          {
+            echo "Published ${IMAGE}"
+            echo
+            echo "For files/opt/cubite/openedx-image.env:"
+            echo
+            echo "    OPENEDX_IMAGE=${pinned}"
+          } >> "$GITHUB_STEP_SUMMARY"

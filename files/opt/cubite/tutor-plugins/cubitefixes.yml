@@ -1,0 +1,14 @@
+# A Tutor plugin with three upstream release/verawood security fixes that the
+# release/verawood.1 tag, which Tutor 22.0.2 builds, lacks: GHSA-g266-6v7f-j465,
+# GHSA-c6xg-fh3c-vvhh and GHSA-c6fp-f54c-6cv4 (openedx-forum 0.4.2.post1).
+# .github/workflows/openedx-image.yml builds Cubite's patched openedx image
+# with it. Enable it on a Droplet before building a custom openedx image there,
+# so that the image keeps the fixes. Disable it once Tutor's own image carries
+# them: a cherry-pick that is already applied fails the build.
+name: cubitefixes
+version: 1.0.0
+patches:
+  openedx-dockerfile-post-git-checkout: |
+    # Cubite: upstream security fixes cherry-picked onto release/verawood.1
+    RUN git fetch --depth=2 https://github.com/openedx/edx-platform.git f657d158c23c7358d20163b9a76330c0c35471fe b5fc56a101a2a1d3fd3c3568d2719680840ca7d2 fc8dcdbcc914c4274eed3c5bb7959e8814551f74 \
+      && git -c user.name=Cubite -c user.email=hello@cubite.io cherry-pick -x f657d158c23c7358d20163b9a76330c0c35471fe b5fc56a101a2a1d3fd3c3568d2719680840ca7d2 fc8dcdbcc914c4274eed3c5bb7959e8814551f74
