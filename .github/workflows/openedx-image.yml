@@ -62,12 +62,12 @@ jobs:
           df -h /
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
           docker system prune --all --force > /dev/null
-          if ! swapon --show | grep -q .; then
-            sudo fallocate -l 6G /swapfile-build
-            sudo chmod 600 /swapfile-build
-            sudo mkswap /swapfile-build > /dev/null
-            sudo swapon /swapfile-build
-          fi
+          # The runner's own swap is small (3 GiB), and the first build was
+          # cancelled while it exported the image, so add swap in any case.
+          sudo fallocate -l 6G /swapfile-build
+          sudo chmod 600 /swapfile-build
+          sudo mkswap /swapfile-build > /dev/null
+          sudo swapon /swapfile-build
           swapon --show
           free -h
           df -h /
@@ -112,6 +112,16 @@ jobs:
 
       - name: Build
         run: |
+          # Memory, swap and disk every 30 seconds, for any build that fails.
+          (
+            while sleep 30; do
+              printf '[monitor %s] ' "$(date -u +%H:%M:%S)"
+              free -m | awk '/^Mem:/ { printf "mem used %sM available %sM, ", $3, $7 } /^Swap:/ { printf "swap used %sM, ", $3 }'
+              df -m / | awk 'NR == 2 { print "disk available " $4 "M" }'
+            done
+          ) &
+          monitor=$!
+          trap 'kill "$monitor"' EXIT
           description="Open edX® platform image by Cubite for its DigitalOcean 1-Click: Tutor ${TUTOR_VERSION} (github.com/overhangio/tutor) with tutor-indigo 22.0.0 builds github.com/openedx/openedx-platform tag release/verawood.1 plus the commits in label io.cubite.edx-platform.fixes, cherry-picked by ${PLUGIN_FILE}. Build script: .github/workflows/openedx-image.yml. Both are in github.com/amirtds/cubite-do-marketplace at the revision label's commit. Open edX is a registered trademark of edX LLC."
           tutor images build openedx --target final --no-registry-cache \
             --docker-arg="--label=maintainer=Cubite <hello@cubite.io>" \
@@ -163,3 +173,12 @@ jobs:
             echo
             echo "    OPENEDX_IMAGE=${pinned}"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          free -m
+          swapon --show
+          df -h /
+          docker system df || true
+          sudo dmesg -T | grep -i -E 'out of memory|oom-kill|killed process' | tail -20 || true
