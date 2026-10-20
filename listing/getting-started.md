@@ -30,7 +30,7 @@ The setup wizard starts on its own. It:
 - starts the Open edX platform with HTTPS certificates from Let's Encrypt;
 - creates your admin account.
 
-Setup takes up to an hour on an 8 GB Basic Droplet, most of it database setup (54 minutes in Cubite's test of this image on 2026-10-20); the wizard prints a progress line at least every two minutes. You can stop it at any time and continue later with: `openedx-setup`. If the connection drops while the platform is starting, the launch keeps running; log in again later and the wizard completes setup.
+Setup takes up to an hour on an 8 GB Basic Droplet, most of it database setup (58 minutes in Cubite's test of this image on 2026-10-20); the wizard prints a progress line at least every two minutes. You can stop it at any time and continue later with: `openedx-setup`. If the connection drops while the platform is starting, the launch keeps running; log in again later and the wizard completes setup.
 
 ## 4. Open your platform
 

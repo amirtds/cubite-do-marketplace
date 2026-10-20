@@ -3,7 +3,7 @@
 Cubite's 1-Click image for DigitalOcean installs the Open edX platform (Verawood) with Tutor on Ubuntu 24.04. Maintained by Cubite ([cubite.io](https://cubite.io/open-edx?utm_source=github-1click)), which also runs the Open edX platform as a managed service from $1,260 a month.
 
 **Supported versions:** Open edX Verawood (`release/verawood.1` with three upstream security fixes, see Security), Tutor 22.0.2, Docker Engine 29.x with Docker Compose 2.x, Ubuntu 24.04 LTS.
-**Last tested on a Droplet:** 2026-10-20, the image to be submitted (snapshot `cubite-openedx-verawood-tutor22-2404-20261020-1522`, tor1, s-4vcpu-8gb, with Cubite's patched openedx image): first boot (215 s), setup with a Let's Encrypt certificate (54 min), the patched-image checks, course assets served with `Content-Security-Policy: sandbox`, admin sign-in and a reboot (the platform back in 50 s) all passed.
+**Last tested on a Droplet:** 2026-10-20, the image to be submitted (snapshot `cubite-openedx-verawood-tutor22-2404-20261020-1702`, tor1, s-4vcpu-8gb, with Cubite's patched openedx image): first boot (7 min), setup with a Let's Encrypt certificate (58 min), the patched-image checks, course assets served with `Content-Security-Policy: sandbox`, the booking links on the login message and the setup summary, admin sign-in and a reboot (the platform back in 73 s) all passed.
 
 This repository holds the Packer template and the scripts that build the image behind Cubite's listing on the DigitalOcean Marketplace (draft title in [listing/title.txt](listing/title.txt)). Cubite builds and supports the image. DigitalOcean does not build or support it.
 
