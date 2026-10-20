@@ -60,7 +60,7 @@ Tutor's configuration, including this Droplet's passwords and keys, is in `/root
 
 ## 7. Updates
 
-Ubuntu security updates install automatically. Open edX and Tutor updates and security notices are posted on the image's GitHub page, https://github.com/GITHUB_HOME/cubite-do-marketplace. To apply a Tutor 22.0.x release:
+Ubuntu security updates install automatically. Open edX and Tutor updates and security notices are posted on the image's GitHub page, https://github.com/amirtds/cubite-do-marketplace. To apply a Tutor 22.0.x release:
 
 ```
 /opt/tutor/venv/bin/pip install --upgrade "tutor[full]>=22.0.0,<23.0.0"
@@ -71,7 +71,7 @@ If the setup summary says that the Droplet runs Cubite's patched openedx image, 
 
 ## 8. Support
 
-Cubite builds and supports this image. DigitalOcean does not build or support it. For installer problems, open an issue at https://github.com/GITHUB_HOME/cubite-do-marketplace/issues (triaged weekly) or email hello@cubite.io. For questions about using the Open edX platform, see the Open edX forum: https://discuss.openedx.org
+Cubite builds and supports this image. DigitalOcean does not build or support it. For installer problems, open an issue at https://github.com/amirtds/cubite-do-marketplace/issues (triaged weekly) or email hello@cubite.io. For questions about using the Open edX platform, see the Open edX forum: https://discuss.openedx.org
 
 Prefer not to run it yourself? Cubite runs managed Open edX from $1,260 a month for up to 1,000 concurrent learners.
 https://cubite.io/open-edx?utm_source=do-1click
