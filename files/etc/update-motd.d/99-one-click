@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# 99-one-click: message of the day for Cubite's DigitalOcean 1-Click image for
+# the Open edX platform. update-motd runs it as root at every login.
+# Before setup it explains how to start; after setup it shows the summary
+# that the setup wizard (openedx-setup) saved.
+
+STATE_DIR=/var/lib/cubite-openedx
+SUMMARY_FILE="${STATE_DIR}/summary.txt"
+DONE_FILE="${STATE_DIR}/setup.done"
+FIRSTBOOT_STATUS_FILE="${STATE_DIR}/firstboot.status"
+
+if [ -f "$DONE_FILE" ] && [ -f "$SUMMARY_FILE" ]; then
+  cat "$SUMMARY_FILE"
+  echo "To delete this message of the day: rm -rf $(readlink -f "$0")"
+  exit 0
+fi
+
+myip=$(hostname -I | awk '{print $1}')
+case "$(cat "$FIRSTBOOT_STATUS_FILE" 2>/dev/null)" in
+  ok) firstboot="First boot has finished downloading the Open edX images." ;;
+  pulling) firstboot="First boot is still downloading the Open edX images; the wizard waits for it." ;;
+  pull-failed) firstboot="First boot could not download every image; the wizard's launch step retries." ;;
+  *) firstboot="First boot has not finished yet; the wizard waits for it." ;;
+esac
+
+cat <<EOF
+********************************************************************************
+Open edX(R) platform (Verawood) with Tutor 22.0.2, built and supported by
+Cubite. DigitalOcean does not build or support this image.
+
+The platform is not set up yet, and it needs a domain name. At your DNS
+provider, create these two records (use your own domain instead of
+learn.example.com):
+  A      learn.example.com       ${myip}
+  CNAME  *.learn.example.com     learn.example.com
+
+The setup wizard starts when you log in as root. To start it yourself, run:
+  openedx-setup
+${firstboot}
+
+Logs:  /var/log/cubite-openedx/ (firstboot.log, setup.log)
+Help:  hello@cubite.io
+EOF
+echo
+echo 'Prefer not to run it yourself? Cubite runs managed Open edX from $1,260 a month for up to 1,000 concurrent learners.'
+echo 'https://cubite.io/open-edx?utm_source=do-1click'
+echo
+echo 'Open edX is a registered trademark of edX LLC. All Rights Reserved.'
+cat <<EOF
+********************************************************************************
+To delete this message of the day: rm -rf $(readlink -f "$0")
+EOF

@@ -41,3 +41,9 @@ Thumbs.db
 .vscode
 
 .Rproj.user
+
+# Packer build output and local variables (never commit a token) #
+###################################################################
+packer_cache/
+*.pkrvars.hcl
+manifest.json

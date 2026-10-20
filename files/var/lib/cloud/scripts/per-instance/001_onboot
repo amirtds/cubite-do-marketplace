@@ -1,0 +1,110 @@
+#!/bin/bash
+#
+# 001_onboot: first boot of each Droplet created from Cubite's 1-Click image
+# for the Open edX platform. cloud-init runs it once per Droplet, as root,
+# from /var/lib/cloud/scripts/per-instance.
+#
+# It only downloads the Open edX Docker images, so they are ready by the time
+# the owner has created the DNS records and logged in. It creates no Tutor
+# config and no secrets: the setup wizard (openedx-setup) does that at the
+# first interactive root login, so every Droplet gets its own.
+#
+# All output goes to a root-only log (never to cloud-init's output log), and
+# the script always exits 0: if a download fails, the wizard's launch step
+# downloads the missing images itself. Every download has a time limit, so
+# that a stalled one cannot keep cloud-init's final stage, which the wizard
+# waits for, running forever.
+
+set -uo pipefail
+umask 077
+
+STATE_DIR=/var/lib/cubite-openedx
+LOG_DIR=/var/log/cubite-openedx
+LOG_FILE="${LOG_DIR}/firstboot.log"
+STATUS_FILE="${STATE_DIR}/firstboot.status"
+IMAGE_ENV=/opt/cubite/openedx-image.env
+TUTOR=/opt/tutor/venv/bin/tutor
+# The images a fresh Tutor 22.0.2 platform uses with its default plugins
+# (mfe and indigo). The forum plugin adds no image of its own.
+IMAGES=(openedx permissions mfe caddy meilisearch mongodb mysql redis smtp)
+
+mkdir -p "$STATE_DIR" "$LOG_DIR"
+chmod 0700 "$STATE_DIR" "$LOG_DIR"
+touch "$LOG_FILE"
+chmod 0600 "$LOG_FILE"
+exec >>"$LOG_FILE" 2>&1 </dev/null
+
+export HOME=/root
+export TUTOR_ROOT=/root/.local/share/tutor
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+set_status() { printf '%s\n' "$1" > "$STATUS_FILE"; }
+
+set_status pulling
+log "First boot started (system booted at $(uptime -s))"
+
+# Optional: a patched openedx image built by Cubite (security path b). The
+# file holds one line, OPENEDX_IMAGE=<registry>/<name>:<tag>, and only exists
+# in images built that way. The setup wizard reads the same file.
+openedx_image=""
+if [ -r "$IMAGE_ENV" ]; then
+  openedx_image="$(sed -n 's/^OPENEDX_IMAGE=//p' "$IMAGE_ENV" | head -n 1)"
+  if ! [[ "$openedx_image" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]]; then
+    log "Ignoring ${IMAGE_ENV}: OPENEDX_IMAGE is missing or malformed"
+    openedx_image=""
+  fi
+fi
+
+if [ ! -x "$TUTOR" ]; then
+  log "ERROR: ${TUTOR} is missing; the image build is broken"
+  set_status pull-failed
+  exit 0
+fi
+
+# cloud-init does not wait for Docker, so wait for the daemon here.
+docker_ready=0
+for _ in $(seq 1 60); do
+  if docker info >/dev/null 2>&1; then
+    docker_ready=1
+    break
+  fi
+  sleep 5
+done
+if [ "$docker_ready" -ne 1 ]; then
+  log "ERROR: the Docker daemon did not become ready within 5 minutes"
+  set_status pull-failed
+  exit 0
+fi
+
+# timeout stops the whole process group, so the docker clients stop too.
+pull_images() {
+  if [ -n "$openedx_image" ]; then
+    timeout 1200 docker pull "$openedx_image" || return 1
+    timeout 1800 "$TUTOR" images pull "${IMAGES[@]:1}"
+  else
+    timeout 1800 "$TUTOR" images pull "${IMAGES[@]}"
+  fi
+}
+
+result=pull-failed
+for attempt in 1 2 3; do
+  log "Pulling the Open edX images, attempt ${attempt} of 3"
+  if pull_images; then
+    result=ok
+    break
+  fi
+  if [ "$attempt" -lt 3 ]; then
+    sleep $((attempt * 60))
+  fi
+done
+
+if [ "$result" = ok ]; then
+  log "Images pulled; first boot took ${SECONDS}s"
+else
+  log "Could not pull every image; the setup wizard's launch step will retry"
+fi
+docker image ls --format '{{.Repository}}:{{.Tag}} {{.Size}}' || true
+df -h / || true
+set_status "$result"
+exit 0

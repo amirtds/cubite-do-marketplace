@@ -1,0 +1,733 @@
+#!/bin/bash
+#
+# openedx-setup: first-login setup wizard for Cubite's DigitalOcean 1-Click
+# image for the Open edX platform (Open edX Verawood, Tutor 22.0.2).
+#
+# It starts at the first interactive root login (a hook in /root/.bashrc) and
+# can be run again at any time as: openedx-setup
+#
+# It asks for the LMS domain, the platform name and a contact email, checks
+# the DNS records, then generates this Droplet's own Tutor config and secrets,
+# launches the platform with HTTPS, creates the admin user and writes a
+# summary. Every step is safe to repeat, so an interrupted or failed run
+# simply starts again. Tutor prints commands that contain passwords, so all of
+# its output goes to a root-only log, never to the terminal.
+
+set -uo pipefail
+# The wizard's own files (log, answers, password file, summary) are root-only.
+# Tutor runs with umask 022 instead (tutor_run): its env files are
+# bind-mounted into containers that run as uid 1000 and must read them.
+umask 077
+export LC_ALL=C.UTF-8
+
+STATE_DIR=/var/lib/cubite-openedx
+LOG_DIR=/var/log/cubite-openedx
+SETUP_LOG="${LOG_DIR}/setup.log"
+DONE_FILE="${STATE_DIR}/setup.done"
+SUMMARY_FILE="${STATE_DIR}/summary.txt"
+ANSWERS_FILE="${STATE_DIR}/answers"
+FIRSTBOOT_STATUS_FILE="${STATE_DIR}/firstboot.status"
+PASSWORD_FILE=/root/.digitalocean_password
+LOCK_FILE=/run/lock/cubite-openedx-setup.lock
+IMAGE_ENV=/opt/cubite/openedx-image.env
+TUTOR=/opt/tutor/venv/bin/tutor
+TUTOR_CONFIG=/root/.local/share/tutor/config.yml
+TUTOR_ENV_DIR=/root/.local/share/tutor/env
+COMPOSE_OVERRIDE="${TUTOR_ENV_DIR}/local/docker-compose.override.yml"
+# The DNS check asks public resolvers, so that it sees what Let's Encrypt
+# sees. /etc/hosts would not do: cloud-init maps the Droplet's own name to
+# 127.0.1.1 there, and DigitalOcean suggests naming a Droplet after its domain.
+PUBLIC_RESOLVERS=(1.1.1.1 8.8.8.8)
+SWAPFILE=/swapfile
+METADATA=http://169.254.169.254/metadata/v1
+MANAGED_LINE='Prefer not to run it yourself? Cubite runs managed Open edX from $1,260 a month for up to 1,000 concurrent learners.'
+MANAGED_URL='https://cubite.io/open-edx?utm_source=do-1click'
+TRADEMARK_LINE='Open edX is a registered trademark of edX LLC. All Rights Reserved.'
+# 3.5 GiB and 7 GiB, in KiB (MemTotal on a 4 GB Droplet is a little under 4 GiB).
+MIN_MEM_KIB=3670016
+LOW_MEM_KIB=7340032
+
+export HOME=/root
+export TUTOR_ROOT=/root/.local/share/tutor
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PYTHONUNBUFFERED=1
+
+# Set while the launch step runs in the background.
+launch_pid=""
+
+say() { printf '%s\n' "$*"; }
+step() { printf '\n==> %s\n' "$*"; }
+
+fail() {
+  say ""
+  say "Setup stopped: $1"
+  say "Most problems come from too little memory or DNS records that are not in place yet."
+  say "Details are in ${SETUP_LOG}. That log contains passwords, so do not share it as is."
+  say "Fix the problem, then run openedx-setup again. It is safe to repeat."
+  exit 1
+}
+
+quit_for_now() {
+  say ""
+  say "Setup is paused. It starts again at your next root login, or run: openedx-setup"
+  exit 0
+}
+
+on_interrupt() {
+  say ""
+  say ""
+  if [ -n "$launch_pid" ] && kill -0 "$launch_pid" 2>/dev/null; then
+    say "Setup interrupted. The launch step keeps running in the background, so the"
+    say "database migrations are not cut off; it can take up to an hour in all (log: ${SETUP_LOG})."
+    say "Once it has finished, run openedx-setup again (or log in again) to complete setup."
+  else
+    say "Setup interrupted. Nothing is lost: run openedx-setup (or log in again) to continue."
+  fi
+  exit 130
+}
+
+remove_login_hook() {
+  if [ -f /root/.bashrc ] && grep -qF 'cubite-openedx-setup' /root/.bashrc; then
+    sed -i '/cubite-openedx-setup/d' /root/.bashrc
+  fi
+}
+
+trim() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+# ask VAR "question" "default": reads one line from the terminal into VAR.
+ask() {
+  local __var="$1" __text="$2" __default="${3:-}" __answer=""
+  if [ -n "$__default" ]; then
+    IFS= read -r -e -p "${__text} [${__default}]: " __answer || return 1
+    __answer="$(trim "$__answer")"
+    __answer="${__answer:-$__default}"
+  else
+    IFS= read -r -e -p "${__text}: " __answer || return 1
+    __answer="$(trim "$__answer")"
+  fi
+  printf -v "$__var" '%s' "$__answer"
+}
+
+normalize_host() {
+  local h
+  h="$(trim "$1")"
+  h="${h,,}"
+  h="${h#http://}"
+  h="${h#https://}"
+  h="${h%%/*}"
+  h="${h%.}"
+  printf '%s' "$h"
+}
+
+# Each check prints the reason and returns 1 when the value is not usable.
+check_host() {
+  local h="$1"
+  local label='[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?'
+  local re="^(${label}\\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?\$"
+  if [ -z "$h" ]; then
+    say "  Enter a domain name, for example learn.example.com."
+    return 1
+  fi
+  # The platform stores studio.<domain>:8001 in a 100-character column.
+  if [ "${#h}" -gt 88 ]; then
+    say "  That name is too long (88 characters at most)."
+    return 1
+  fi
+  if ! [[ "$h" =~ $re ]]; then
+    say "  \"${h}\" is not a domain name that setup can use. Enter a name such as learn.example.com:"
+    say "  letters, digits, hyphens and dots only (an IP address cannot get an HTTPS certificate,"
+    say "  and an internationalized name must be entered in its xn-- form)."
+    return 1
+  fi
+}
+
+check_name() {
+  local n="$1"
+  if [ -z "$n" ]; then
+    say "  Enter a name."
+    return 1
+  fi
+  if [ "${#n}" -gt 80 ]; then
+    say "  Use 80 characters or fewer."
+    return 1
+  fi
+  if ! [[ "$n" =~ ^[[:print:]]+$ ]]; then
+    say "  Use printable characters only."
+    return 1
+  fi
+  case "$n" in
+    *'"'* | *'\'* | *'<'* | *'>'*)
+      say "  The name cannot contain double quotes, backslashes, < or >."
+      return 1
+      ;;
+    *'{{'* | *'{%'* | *'{#'*)
+      say "  The name cannot contain {{, {% or {#."
+      return 1
+      ;;
+  esac
+}
+
+check_email() {
+  local e="$1"
+  local re='^[a-z0-9._%+-]+@([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$'
+  if [ -z "$e" ] || [ "${#e}" -gt 254 ] || ! [[ "$e" =~ $re ]]; then
+    say "  Enter an email address such as you@example.com (letters, digits and . _ % + - only)."
+    return 1
+  fi
+}
+
+# JSON-quote a value for tutor config save --set: Tutor parses --set values as
+# YAML, so a name such as "Acme: Learning" must be passed as a quoted string.
+# ensure_ascii=False passes emoji and other characters outside the Basic
+# Multilingual Plane as they are: as \u escapes they would be surrogate pairs,
+# which PyYAML turns into lone surrogates that Tutor cannot write to its env.
+json_quote() {
+  python3 -I -c 'import json, sys; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$1"
+}
+
+metadata() {
+  curl -fsS --max-time 3 "${METADATA}/$1" 2>/dev/null
+}
+
+is_ipv4() {
+  [[ "$1" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
+}
+
+# normalize_ipv6 ADDRESS: prints the address in its canonical short form, or
+# nothing when it is not an IPv6 address.
+normalize_ipv6() {
+  python3 -I -c 'import ipaddress, sys
+try:
+    print(ipaddress.IPv6Address(sys.argv[1]).compressed)
+except ValueError:
+    pass' "$1" 2>/dev/null
+}
+
+find_ips() {
+  droplet_ip="$(metadata interfaces/public/0/ipv4/address || true)"
+  if ! is_ipv4 "$droplet_ip"; then
+    droplet_ip="$(ip -4 -o route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
+  fi
+  reserved_ip=""
+  if [ "$(metadata reserved_ip/ipv4/active || true)" = "true" ]; then
+    reserved_ip="$(metadata reserved_ip/ipv4/ip_address || true)"
+    is_ipv4 "$reserved_ip" || reserved_ip=""
+  fi
+  # A Droplet has IPv6 only if its owner turned it on.
+  droplet_ipv6="$(normalize_ipv6 "$(metadata interfaces/public/0/ipv6/address || true)")"
+  reserved_ipv6=""
+  if [ "$(metadata reserved_ip/ipv6/active || true)" = "true" ]; then
+    reserved_ipv6="$(normalize_ipv6 "$(metadata reserved_ip/ipv6/ip_address || true)")"
+  fi
+}
+
+# resolve TYPE NAME: prints the name's A or AAAA addresses, space-separated,
+# as the public resolvers return them.
+resolve() {
+  local type="$1" name="$2" r out pattern
+  if [ "$type" = A ]; then
+    pattern='^[0-9]+([.][0-9]+){3}$'
+  else
+    pattern='^[0-9a-fA-F.]*:[0-9a-fA-F:.]*$'
+  fi
+  for r in "${PUBLIC_RESOLVERS[@]}"; do
+    # dig exits 0 whenever the resolver answers, also when there is no record.
+    if out="$(dig +short +time=3 +tries=1 "$type" "$name" "@${r}" 2>/dev/null)"; then
+      printf '%s\n' "$out" | grep -E "$pattern" | sort -u | xargs
+      return 0
+    fi
+  done
+  # No public resolver answered (outbound DNS may be filtered): ask the system
+  # resolver for IPv4, ignoring the loopback addresses from /etc/hosts.
+  if [ "$type" = A ]; then
+    getent ahostsv4 "$name" 2>/dev/null | awk '$1 !~ /^127[.]/ {print $1}' | sort -u | xargs
+  fi
+}
+
+# True when every IPv4 address in $1 is this Droplet's public or reserved IP.
+points_here() {
+  local a found=0
+  for a in $1; do
+    if [ "$a" = "$droplet_ip" ] || { [ -n "$reserved_ip" ] && [ "$a" = "$reserved_ip" ]; }; then
+      found=1
+    else
+      return 1
+    fi
+  done
+  [ "$found" -eq 1 ]
+}
+
+# True when the IPv6 address $1 is this Droplet's own or its reserved IPv6.
+ipv6_here() {
+  local a
+  a="$(normalize_ipv6 "$1")"
+  [ -n "$a" ] && { [ "$a" = "$droplet_ipv6" ] || [ "$a" = "$reserved_ipv6" ]; }
+}
+
+# Returns 0 when every name points at this Droplet. An AAAA record that points
+# elsewhere fails the check too, because Let's Encrypt prefers IPv6.
+check_dns() {
+  local name addrs a status=0
+  resolvectl flush-caches >/dev/null 2>&1 || true
+  for name in "$lms_host" "studio.${lms_host}" "apps.${lms_host}" "meilisearch.${lms_host}"; do
+    addrs="$(resolve A "$name")"
+    if points_here "$addrs"; then
+      printf '  OK       %s -> %s\n' "$name" "$addrs"
+    elif [ -z "$addrs" ]; then
+      printf '  MISSING  %s (no IPv4 address yet)\n' "$name"
+      status=1
+    else
+      printf '  WRONG    %s -> %s (not this Droplet)\n' "$name" "$addrs"
+      status=1
+    fi
+    for a in $(resolve AAAA "$name"); do
+      ipv6_here "$a" && continue
+      if [ -n "$droplet_ipv6" ]; then
+        printf '  WRONG    %s has the AAAA (IPv6) record %s: delete it or point it at %s\n' "$name" "$a" "$droplet_ipv6"
+      else
+        printf '  WRONG    %s has the AAAA (IPv6) record %s: delete it (this Droplet has no IPv6)\n' "$name" "$a"
+      fi
+      status=1
+    done
+  done
+  return "$status"
+}
+
+print_dns_records() {
+  local target="${reserved_ip:-$droplet_ip}"
+  say ""
+  say "Create these two records at your DNS provider:"
+  say ""
+  printf '  %-6s %-40s %s\n' "Type" "Name" "Value"
+  printf '  %-6s %-40s %s\n' "A" "$lms_host" "${target:-the public IPv4 address of this Droplet}"
+  printf '  %-6s %-40s %s\n' "CNAME" "*.${lms_host}" "$lms_host"
+  say ""
+  if [ -n "$reserved_ip" ]; then
+    say "This Droplet has the reserved IP ${reserved_ip}; its own address is ${droplet_ip}. Either works."
+  fi
+  say "The wildcard record covers studio., apps. and meilisearch.${lms_host}."
+  if [ -n "$droplet_ipv6" ]; then
+    say "AAAA (IPv6) records are optional; any you keep must point at ${droplet_ipv6}${reserved_ipv6:+ or ${reserved_ipv6}}."
+  else
+    say "Delete any AAAA (IPv6) record for these names: this Droplet has no IPv6 address."
+  fi
+  say "If your DNS provider can proxy traffic (for example Cloudflare), set both records"
+  say "to DNS only, so that Let's Encrypt can reach this Droplet. New records can take"
+  say "a few minutes to be visible."
+}
+
+ensure_swap() {
+  if [ -n "$(swapon --show=NAME --noheadings 2>/dev/null)" ]; then
+    return 0
+  fi
+  if [ ! -f "$SWAPFILE" ]; then
+    fallocate -l 2G "$SWAPFILE" 2>/dev/null \
+      || dd if=/dev/zero of="$SWAPFILE" bs=1M count=2048 status=none \
+      || return 1
+    chmod 0600 "$SWAPFILE"
+    mkswap "$SWAPFILE" >/dev/null || return 1
+  fi
+  swapon "$SWAPFILE" || return 1
+  if ! grep -qE "^${SWAPFILE}[[:space:]]" /etc/fstab; then
+    printf '%s none swap sw 0 0\n' "$SWAPFILE" >> /etc/fstab
+  fi
+}
+
+# run_logged "description" command...: output goes to the setup log only.
+run_logged() {
+  printf '\n### %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> "$SETUP_LOG"
+  shift
+  "$@" </dev/null >>"$SETUP_LOG" 2>&1
+}
+
+# tutor_run ARGS...: runs Tutor with umask 022 (see the top of this file).
+tutor_run() {
+  ( umask 022; exec "$TUTOR" "$@" )
+}
+
+# Turns off the anonymous usage analytics that Meilisearch sends by default,
+# in the override file that Tutor documents for changes to its services. An
+# existing file holds the owner's own changes and is left alone.
+write_compose_override() {
+  [ -e "$COMPOSE_OVERRIDE" ] && return 0
+  # Without Tutor's own meilisearch service, the override would define a
+  # service with no image, which docker compose rejects.
+  [ "$(tutor_run config printvalue RUN_MEILISEARCH 2>/dev/null)" = "false" ] && return 0
+  (
+    umask 022
+    cat > "$COMPOSE_OVERRIDE" <<'EOF'
+# Written by openedx-setup (Cubite 1-Click image). Tutor loads this file for
+# every "tutor local" command and keeps it across "tutor config save" (but not
+# "tutor config save --clean"). It turns off Meilisearch's anonymous usage
+# analytics. If you set RUN_MEILISEARCH=false, delete this file.
+services:
+  meilisearch:
+    environment:
+      MEILI_NO_ANALYTICS: "true"
+EOF
+  )
+}
+
+elapsed() {
+  local s=$((SECONDS - launch_start))
+  printf '%dm%02ds' $((s / 60)) $((s % 60))
+}
+
+# Shows Tutor's own stage titles from the launch output, and at least every
+# two minutes a line with the number of database migrations applied so far:
+# the migrations take most of an hour on a Basic Droplet and print no stage
+# title of their own, so without it the wizard looks frozen. Nothing else is
+# printed, because Tutor echoes commands that contain passwords.
+show_progress() {
+  local line rc migrations=0 last_shown=$SECONDS interval=120
+  while :; do
+    if IFS= read -r -t 60 line; then
+      line="$(trim "$line")"
+      case "$line" in
+        "Stopping any existing platform") say "  [$(elapsed)] Stopping any running containers"; last_shown=$SECONDS ;;
+        "Starting the platform in detached mode") say "  [$(elapsed)] Starting the containers (downloads any missing images)"; last_shown=$SECONDS ;;
+        "Database creation and migrations") say "  [$(elapsed)] Creating the databases and running migrations (the longest step)"; last_shown=$SECONDS ;;
+        "Running init task in "*) say "  [$(elapsed)] Initialising ${line#Running init task in }"; last_shown=$SECONDS ;;
+        "All services initialised.") say "  [$(elapsed)] All services initialised"; last_shown=$SECONDS ;;
+        "Applying "*"... OK"*) migrations=$((migrations + 1)) ;;
+      esac
+    else
+      rc=$?
+      [ "$rc" -gt 128 ] || break
+    fi
+    if [ $((SECONDS - last_shown)) -ge "$interval" ]; then
+      if [ "$migrations" -gt 0 ]; then
+        say "  [$(elapsed)] Still working (${migrations} database migrations applied so far)"
+      else
+        say "  [$(elapsed)] Still working..."
+      fi
+      last_shown=$SECONDS
+    fi
+  done
+  return 0
+}
+
+write_password_file() {
+  local tmp
+  tmp="$(mktemp /root/.digitalocean_password.XXXXXX)"
+  {
+    say "# Admin account for the Open edX(R) platform, created by openedx-setup (Cubite 1-Click image)"
+    say "openedx_admin_user=\"admin\""
+    say "openedx_admin_email=\"${contact_email}\""
+    say "openedx_admin_password=\"${admin_password}\""
+    say "openedx_lms_url=\"https://${lms_host}\""
+  } > "$tmp"
+  chmod 0600 "$tmp"
+  mv -f "$tmp" "$PASSWORD_FILE"
+}
+
+write_summary() {
+  local image_note=""
+  if [ -n "$openedx_image" ]; then
+    image_note="This Droplet runs Cubite's patched openedx image (DOCKER_IMAGE_OPENEDX). When
+you move to a Tutor release that includes its fixes, also run
+tutor config save --unset DOCKER_IMAGE_OPENEDX before tutor local launch -I.
+"
+  fi
+  cat > "$SUMMARY_FILE" <<EOF
+********************************************************************************
+The Open edX(R) platform (Verawood) with Tutor 22.0.2 is set up on this Droplet.
+This image is built and supported by Cubite. DigitalOcean does not build or
+support it.
+
+  LMS:             https://${lms_host}
+  Studio:          https://studio.${lms_host}
+  Admin user:      admin (${contact_email})
+  Admin password:  in ${PASSWORD_FILE}
+  Tutor config:    ${TUTOR_CONFIG}
+                   (it holds this Droplet's passwords and keys: keep a backup)
+  Logs:            ${LOG_DIR}/ (setup.log contains passwords; do not share it)
+
+Everyday commands, as root:
+  tutor local status           list the containers
+  tutor local logs -f lms      follow the LMS log
+  tutor local restart          restart the platform
+  tutor local stop             stop the platform (start it with: tutor local start -d)
+
+Email: DigitalOcean blocks SMTP ports 25, 465 and 587, so the platform cannot
+send account, password-reset or notification email until you use an external
+SMTP provider on another port (many offer 2525):
+  tutor config save --set RUN_SMTP=false --set SMTP_HOST=smtp.example.com \\
+    --set SMTP_PORT=2525 --set SMTP_USERNAME=... --set SMTP_PASSWORD=... \\
+    --set SMTP_USE_TLS=true
+  tutor local launch -I
+
+To change the domain later: tutor config save --set LMS_HOST=new.example.com
+--set CMS_HOST=studio.new.example.com, then tutor local launch -I.
+
+Updates: Ubuntu security updates install automatically. Open edX and Tutor
+updates are announced on the image's GitHub page, linked from the DigitalOcean
+Marketplace listing (https://marketplace.digitalocean.com/apps/cubite).
+${image_note}Tutor documentation: https://docs.tutor.edly.io
+Help: hello@cubite.io
+
+${MANAGED_LINE}
+${MANAGED_URL}
+
+${TRADEMARK_LINE}
+********************************************************************************
+EOF
+  chmod 0600 "$SUMMARY_FILE"
+}
+
+# ---------------------------------------------------------------------------
+
+if [ "$(id -u)" -ne 0 ]; then
+  say "Run openedx-setup as root."
+  exit 1
+fi
+if [ ! -x "$TUTOR" ]; then
+  say "Tutor is missing from ${TUTOR}; this image is broken. Contact hello@cubite.io."
+  exit 1
+fi
+
+mkdir -p "$STATE_DIR" "$LOG_DIR"
+chmod 0700 "$STATE_DIR" "$LOG_DIR"
+touch "$SETUP_LOG"
+chmod 0600 "$SETUP_LOG"
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  say "Setup is already running in another session, or its launch step is still running"
+  say "in the background (log: ${SETUP_LOG}). Run openedx-setup again once it has finished."
+  exit 0
+fi
+
+if [ -f "$DONE_FILE" ]; then
+  remove_login_hook
+  [ -f "$SUMMARY_FILE" ] && cat "$SUMMARY_FILE"
+  say "The Open edX platform is already set up on this Droplet; nothing to do."
+  exit 0
+fi
+
+trap on_interrupt INT TERM
+trap 'exit 129' HUP
+
+say ""
+say "Open edX(R) platform (Verawood) with Tutor 22.0.2: first-time setup"
+say ""
+say "This image is built and supported by Cubite (hello@cubite.io)."
+say "DigitalOcean does not build or support it."
+say ""
+say "Setup asks three questions, checks your DNS records, creates this Droplet's"
+say "own passwords and keys, and starts the platform with HTTPS. The launch step"
+say "takes up to an hour, most of it database setup. You can stop at any point"
+say "(Ctrl-C) and run openedx-setup later."
+
+# Wait for first boot, which downloads the Open edX images.
+if command -v cloud-init >/dev/null 2>&1; then
+  if cloud-init status 2>/dev/null | grep -q 'status: running'; then
+    step "Waiting for the Droplet's first boot to finish (it downloads the Open edX images)"
+  fi
+  # --foreground keeps Ctrl-C working. After 45 minutes setup goes on without
+  # first boot: the launch step downloads any missing images itself.
+  timeout --foreground 2700 cloud-init status --wait >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -eq 124 ]; then
+    say "First boot is taking longer than 45 minutes; continuing. The launch step downloads any missing images."
+  elif [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+    say "Warning: cloud-init reported an error (exit code ${rc}); see /var/log/cloud-init.log. Setup continues."
+  fi
+fi
+firstboot_status="$(cat "$FIRSTBOOT_STATUS_FILE" 2>/dev/null || true)"
+case "$firstboot_status" in
+  ok) ;;
+  pull-failed)
+    say "Note: first boot could not download every Open edX image; the launch step will download them."
+    ;;
+  *)
+    say "Note: the first-boot image download did not finish (status: ${firstboot_status:-none}); the launch step will download the images."
+    ;;
+esac
+
+# Memory check: Open edX's migrations need about 4 GB.
+mem_kib="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+mem_gib="$(awk -v k="$mem_kib" 'BEGIN { printf "%.1f", k / 1048576 }')"
+if [ "$mem_kib" -lt "$MIN_MEM_KIB" ]; then
+  say ""
+  say "This Droplet has ${mem_gib} GiB of memory. The Open edX platform needs at least"
+  say "4 GB (8 GB is recommended); its database migrations fail with less."
+  say "Resize the Droplet in the DigitalOcean control panel (Resize, CPU and RAM only)"
+  say "to 8 GB / 4 vCPUs, or at least 4 GB / 2 vCPUs, then log in again."
+  exit 1
+fi
+low_memory=0
+if [ "$mem_kib" -lt "$LOW_MEM_KIB" ]; then
+  low_memory=1
+fi
+
+openedx_image=""
+if [ -r "$IMAGE_ENV" ]; then
+  openedx_image="$(sed -n 's/^OPENEDX_IMAGE=//p' "$IMAGE_ENV" | head -n 1)"
+  [[ "$openedx_image" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]] || openedx_image=""
+fi
+
+# Questions. Earlier answers (from a paused or failed run) are the defaults.
+prev_lms="" prev_name="" prev_email=""
+if [ -f "$ANSWERS_FILE" ]; then
+  { IFS= read -r prev_lms; IFS= read -r prev_name; IFS= read -r prev_email; } < "$ANSWERS_FILE" || true
+fi
+[ -n "$prev_name" ] || prev_name="My Open edX"
+
+while :; do
+  step "Your platform"
+  while :; do
+    ask lms_host "Domain name for your LMS, for example learn.example.com" "$prev_lms" || quit_for_now
+    lms_host="$(normalize_host "$lms_host")"
+    check_host "$lms_host" && break
+  done
+  while :; do
+    ask platform_name "Platform name shown to learners" "$prev_name" || quit_for_now
+    check_name "$platform_name" && break
+  done
+  while :; do
+    ask contact_email "Email for the admin account (also the public contact address)" "$prev_email" || quit_for_now
+    contact_email="${contact_email,,}"
+    check_email "$contact_email" && break
+  done
+  say ""
+  say "  LMS:     https://${lms_host}"
+  say "  Studio:  https://studio.${lms_host}"
+  say "  Name:    ${platform_name}"
+  say "  Email:   ${contact_email}"
+  ask confirm "Is this correct? (y/n)" "y" || quit_for_now
+  case "${confirm,,}" in
+    y | yes) break ;;
+  esac
+  prev_lms="$lms_host" prev_name="$platform_name" prev_email="$contact_email"
+done
+printf '%s\n%s\n%s\n' "$lms_host" "$platform_name" "$contact_email" > "$ANSWERS_FILE"
+chmod 0600 "$ANSWERS_FILE"
+
+# DNS check: the LMS name and the names under it must point at this Droplet.
+step "Checking DNS for ${lms_host}"
+find_ips
+dns_ready=0
+while :; do
+  if check_dns; then
+    dns_ready=1
+    break
+  fi
+  print_dns_records
+  say ""
+  say "[r] check again"
+  say "[c] continue anyway (the site is reachable once DNS is right; then run: tutor local restart caddy)"
+  say "[q] quit for now"
+  ask choice "Your choice" "r" || quit_for_now
+  case "${choice,,}" in
+    c | continue) break ;;
+    q | quit) quit_for_now ;;
+    *) step "Checking DNS for ${lms_host} again" ;;
+  esac
+done
+
+if [ "$low_memory" -eq 1 ]; then
+  step "This Droplet has ${mem_gib} GiB of memory: adding a 2 GiB swap file and using one worker each for the LMS and Studio"
+  ensure_swap || say "  Warning: could not add swap; the launch may run out of memory."
+fi
+
+# Configuration. The first save generates this Droplet's own MySQL, Django,
+# JWT, OAuth and Meilisearch secrets; later saves keep them.
+step "Saving this Droplet's Tutor configuration and generating its own passwords and keys"
+set_args=(
+  --set "LMS_HOST=$(json_quote "$lms_host")"
+  --set "CMS_HOST=$(json_quote "studio.${lms_host}")"
+  --set "ENABLE_HTTPS=true"
+  --set "PLATFORM_NAME=$(json_quote "$platform_name")"
+  --set "CONTACT_EMAIL=$(json_quote "$contact_email")"
+)
+if [ "$low_memory" -eq 1 ]; then
+  set_args+=(--set OPENEDX_LMS_UWSGI_WORKERS=1 --set OPENEDX_CMS_UWSGI_WORKERS=1)
+fi
+if [ -n "$openedx_image" ]; then
+  set_args+=(--set "DOCKER_IMAGE_OPENEDX=$(json_quote "$openedx_image")")
+fi
+run_logged "tutor config save" tutor_run config save "${set_args[@]}" \
+  || fail "saving the Tutor configuration failed."
+run_logged "tutor plugins enable forum" tutor_run plugins enable forum \
+  || fail "enabling the forum plugin failed."
+# config.yml holds every secret and no container reads it, so it is root-only.
+# The env files are bind-mounted into containers that run as uid 1000, so
+# they must be readable (/root itself stays 0700). Tutor rewrites files in
+# place and keeps their modes, so this also repairs an earlier run's files.
+chmod 0600 "$TUTOR_CONFIG" \
+  || fail "could not make ${TUTOR_CONFIG} root-only."
+chmod -R u=rwX,go=rX "$TUTOR_ENV_DIR" \
+  || fail "could not make Tutor's env files readable for the containers."
+write_compose_override \
+  || fail "could not write ${COMPOSE_OVERRIDE}."
+
+step "Starting the platform. This takes up to an hour, most of it database setup; the full log is ${SETUP_LOG}"
+printf '\n### %s tutor local launch --non-interactive\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$SETUP_LOG"
+launch_start=$SECONDS
+log_offset="$(stat -c %s "$SETUP_LOG" 2>/dev/null || echo 0)"
+# The launch runs in a session of its own (setsid), so a dropped SSH
+# connection or Ctrl-C cannot kill it in the middle of the database
+# migrations. It writes only to the log, which show_progress follows, and it
+# keeps the setup lock (fd 9) until it ends.
+( umask 022; exec setsid --wait "$TUTOR" local launch --non-interactive </dev/null >>"$SETUP_LOG" 2>&1 ) &
+launch_pid=$!
+tail -c "+$((log_offset + 1))" -F --pid="$launch_pid" "$SETUP_LOG" 2>/dev/null | show_progress
+wait "$launch_pid"
+launch_rc=$?
+launch_pid=""
+if [ "$launch_rc" -ne 0 ]; then
+  fail "tutor local launch exited with code ${launch_rc}."
+fi
+say "  The platform is running (launch took $(elapsed))."
+
+step "Creating the admin user"
+admin_password=""
+if [ -f "$PASSWORD_FILE" ]; then
+  admin_password="$(sed -n 's/^openedx_admin_password="\([0-9a-f]*\)"$/\1/p' "$PASSWORD_FILE" | head -n 1)"
+fi
+if [ -z "$admin_password" ]; then
+  admin_password="$(openssl rand -hex 16)"
+fi
+write_password_file
+run_logged "tutor local do createuser" \
+  tutor_run local do createuser --staff --superuser --password "$admin_password" admin "$contact_email" \
+  || fail "creating the admin user failed."
+say "  User: admin (${contact_email}). Password saved in ${PASSWORD_FILE}"
+
+https_ready=0
+if [ "$dns_ready" -eq 1 ]; then
+  step "Waiting for the HTTPS certificate from Let's Encrypt (up to 5 minutes)"
+  # Ask this Droplet's Caddy directly, with the LMS name for SNI, so that the
+  # check needs neither /etc/hosts nor routing back to a reserved IP.
+  https_deadline=$((SECONDS + 300))
+  while :; do
+    if curl -sS -o /dev/null --max-time 10 --resolve "${lms_host}:443:127.0.0.1" \
+         "https://${lms_host}/" 2>/dev/null; then
+      https_ready=1
+      break
+    fi
+    [ "$SECONDS" -lt "$https_deadline" ] || break
+    sleep 10
+  done
+fi
+if [ "$https_ready" -eq 1 ]; then
+  say "  https://${lms_host} is up."
+else
+  say "  HTTPS is not working yet. Caddy keeps asking Let's Encrypt for certificates"
+  say "  in the background. Check that the DNS records point at ${reserved_ip:-$droplet_ip},"
+  say "  then run: tutor local restart caddy"
+fi
+
+write_summary
+date -u +%Y-%m-%dT%H:%M:%SZ > "$DONE_FILE"
+remove_login_hook
+rm -f "$ANSWERS_FILE"
+
+say ""
+cat "$SUMMARY_FILE"
