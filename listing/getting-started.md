@@ -2,7 +2,7 @@ These steps take you from a new Droplet to a running Open edX® platform with HT
 
 ## 1. Choose a Droplet size
 
-8 GB of memory with 4 vCPUs is recommended. 4 GB with 2 vCPUs is the minimum; on those Droplets setup adds a 2 GB swap file. Setup stops on smaller Droplets, because the Open edX database migrations fail with less than 4 GB of memory.
+Use a Droplet with 8 GB of memory and 4 vCPUs, the size Cubite tests. On 4 GB with 2 vCPUs, setup adds a 2 GB swap file and runs slower; that size is not tested. Setup stops on smaller Droplets, because the Open edX database migrations fail with less than 4 GB of memory.
 
 ## 2. Point a domain at the Droplet
 
@@ -30,7 +30,7 @@ The setup wizard starts on its own. It:
 - starts the Open edX platform with HTTPS certificates from Let's Encrypt;
 - creates your admin account.
 
-Setup takes up to an hour on an 8 GB Basic Droplet, most of it database setup (57 minutes in Cubite's test on 2026-10-20); the wizard prints a progress line at least every two minutes. You can stop it at any time and continue later with: `openedx-setup`. If the connection drops while the platform is starting, the launch keeps running; log in again later and the wizard completes setup.
+Setup takes up to an hour on an 8 GB Basic Droplet, most of it database setup (54 minutes in Cubite's test of this image on 2026-10-20); the wizard prints a progress line at least every two minutes. You can stop it at any time and continue later with: `openedx-setup`. If the connection drops while the platform is starting, the launch keeps running; log in again later and the wizard completes setup.
 
 ## 4. Open your platform
 
@@ -74,7 +74,8 @@ This image runs Cubite's patched openedx image: Tutor 22.0.2's image rebuilt wit
 
 Cubite builds and supports this image. DigitalOcean does not build or support it. For installer problems, open an issue at https://github.com/amirtds/cubite-do-marketplace/issues (triaged weekly) or email hello@cubite.io. For questions about using the Open edX platform, see the Open edX forum: https://discuss.openedx.org
 
-Prefer not to run it yourself? Cubite runs managed Open edX from $1,260 a month for up to 1,000 concurrent learners.
-https://cubite.io/open-edx?utm_source=do-1click
+Prefer not to run it yourself? Cubite offers managed Open edX hosting from $1,260 a month for up to 1,000 concurrent learners, with named-release upgrades included in every tier, each upgrade rehearsed on a UAT environment before production. Founder Amir Tadrisi has worked on Open edX since 2013. [Book a free 30-minute call with Amir](https://cubite.io/go/book?src=do-1click) about managed hosting, a platform you already run, or custom work.
+
+Need a custom feature or integration? Cubite's custom development and integration work for the Open edX platform is $125/hr.
 
 Open edX is a registered trademark of edX LLC. All Rights Reserved.

@@ -3,7 +3,7 @@
 Cubite's 1-Click image for DigitalOcean installs the Open edX platform (Verawood) with Tutor on Ubuntu 24.04. Maintained by Cubite ([cubite.io](https://cubite.io/open-edx?utm_source=github-1click)), which also runs the Open edX platform as a managed service from $1,260 a month.
 
 **Supported versions:** Open edX Verawood (`release/verawood.1` with three upstream security fixes, see Security), Tutor 22.0.2, Docker Engine 29.x with Docker Compose 2.x, Ubuntu 24.04 LTS.
-**Last tested on a Droplet:** 2026-10-20, with a test build of the stock Tutor 22.0.2 image (tor1, s-4vcpu-8gb): first boot, setup with a Let's Encrypt certificate, admin sign-in and a reboot all passed. The image that is submitted gets its own test date here.
+**Last tested on a Droplet:** 2026-10-20, the image to be submitted (snapshot `cubite-openedx-verawood-tutor22-2404-20261020-1522`, tor1, s-4vcpu-8gb, with Cubite's patched openedx image): first boot (215 s), setup with a Let's Encrypt certificate (54 min), the patched-image checks, course assets served with `Content-Security-Policy: sandbox`, admin sign-in and a reboot (the platform back in 50 s) all passed.
 
 This repository holds the Packer template and the scripts that build the image behind Cubite's listing on the DigitalOcean Marketplace (draft title in [listing/title.txt](listing/title.txt)). Cubite builds and supports the image. DigitalOcean does not build or support it.
 
@@ -42,7 +42,7 @@ This repository holds the Packer template and the scripts that build the image b
 
 ## What buyers need
 
-- **A Droplet with enough memory:** 8 GB / 4 vCPUs recommended, 4 GB / 2 vCPUs minimum. The image's minimum disk is 25 GB, so DigitalOcean also offers 1 GB and 2 GB plans; the wizard refuses them, because the platform's database migrations fail with less than 4 GB.
+- **A Droplet with enough memory:** 8 GB / 4 vCPUs, the tested size; 4 GB / 2 vCPUs is the untested minimum. The image's minimum disk is 25 GB, so DigitalOcean also offers 1 GB and 2 GB plans; the wizard refuses them, because the platform's database migrations fail with less than 4 GB.
 - **A domain name:** an A record for the LMS domain and a wildcard CNAME (`*.learn.example.com` to `learn.example.com`), both DNS only (not proxied), and no AAAA record unless it points at the Droplet's own IPv6 address. Nothing answers on the bare IP address until setup has run.
 - **An SMTP provider:** DigitalOcean blocks ports 25, 465 and 587, so account activation, password reset and the notification emails Verawood turns on by default need an external provider on another port:
   `tutor config save --set RUN_SMTP=false --set SMTP_HOST=... --set SMTP_PORT=... --set SMTP_USERNAME=... --set SMTP_PASSWORD=... --set SMTP_USE_TLS=true`, then `tutor local launch -I`.
@@ -102,7 +102,7 @@ The build creates a temporary `s-1vcpu-1gb` Droplet in `tor1` named `cubite-open
 Create an `s-4vcpu-8gb` Droplet in `tor1` from the snapshot with a throwaway SSH key, then:
 
 - name the test Droplet after its LMS domain (for example `learn.example.com`), so that cloud-init maps that name to 127.0.1.1 in `/etc/hosts` and the wizard's DNS check is tested against it;
-- before logging in interactively, check over non-interactive SSH: no `/root/.local/share/tutor/config.yml`, no `/opt/digitalocean`, `ufw status` shows only 22, 80 and 443, `firstboot.status` is `ok` and `firstboot.log` is mode 0600;
+- before logging in interactively, check over non-interactive SSH: no `/root/.local/share/tutor/config.yml`, no `/opt/digitalocean` from the image (DigitalOcean installs its droplet agent into each new Droplet, so a directory dated after the Droplet's creation is expected), `ufw status` shows only 22, 80 and 443, `firstboot.status` is `ok` and `firstboot.log` is mode 0600;
 - check that `docker info --format '{{.ServerVersion}} {{.Driver}}'` prints 29.x and `overlay2`, and that `/etc/machine-id` differs from the one the build log printed. If they match, empty `/etc/machine-id` at the end of the installer (Ubuntu cloud images ship it empty), rebuild, and check that docker, ufw and unattended-upgrades are still enabled after first boot;
 - log in before DNS exists: the message of the day appears, the wizard rejects a bad domain, fails the DNS check and prints the records, and comes back at the next login;
 - add the A and wildcard CNAME records, run the wizard with the platform name `Acme: Learning`, and check `tutor config printvalue PLATFORM_NAME`. While the launch runs, close the SSH connection; log in again, check with `tail /var/log/cubite-openedx/setup.log` that the launch went on to the end, then run `openedx-setup` to complete setup;
@@ -151,12 +151,14 @@ See [SECURITY.md](SECURITY.md) for how to report a problem and where security an
 - **Questions about using the Open edX platform:** the Open edX forum, <https://discuss.openedx.org>.
 - **Email:** hello@cubite.io.
 
-Prefer not to run it yourself? Cubite runs managed Open edX from $1,260 a month for up to 1,000 concurrent learners.
+Prefer not to run it yourself? Cubite offers managed Open edX hosting from $1,260 a month for up to 1,000 concurrent learners.
 <https://cubite.io/open-edx?utm_source=github-1click>
+
+Book a free 30-minute call with Cubite's founder: <https://cubite.io/go/book?src=github-1click>
 
 ## End-of-life rule
 
-If a rebuild is more than 8 weeks late after a named Open edX release, the listing is relabelled as outdated or delisted, and this repository is archived with a pointer to its successor. The next named release is Willow, targeted for mid-to-late February 2027.
+If a rebuild is more than 8 weeks late after a named Open edX release, the listing is relabelled as outdated or delisted, and this repository is archived with a pointer to its successor. The next named release is Willow, scheduled for December 2026 (<https://docs.openedx.org/en/latest/community/release_notes/index.html>), so its rebuild is due by February 2027.
 
 ## Repository layout
 
