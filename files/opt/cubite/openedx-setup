@@ -43,8 +43,11 @@ COMPOSE_OVERRIDE="${TUTOR_ENV_DIR}/local/docker-compose.override.yml"
 PUBLIC_RESOLVERS=(1.1.1.1 8.8.8.8)
 SWAPFILE=/swapfile
 METADATA=http://169.254.169.254/metadata/v1
-MANAGED_LINE='Prefer not to run it yourself? Cubite runs managed Open edX from $1,260 a month for up to 1,000 concurrent learners.'
+MANAGED_LINE='Prefer not to run it yourself? Cubite offers managed Open edX hosting from
+$1,260 a month for up to 1,000 concurrent learners:'
 MANAGED_URL='https://cubite.io/open-edx?utm_source=do-1click'
+BOOK_LINE='Book a free 30-minute call with founder Amir Tadrisi:'
+BOOK_URL='https://cubite.io/go/book?src=do-1click-setup'
 TRADEMARK_LINE='Open edX is a registered trademark of edX LLC. All Rights Reserved.'
 # 3.5 GiB and 7 GiB, in KiB (MemTotal on a 4 GB Droplet is a little under 4 GiB).
 MIN_MEM_KIB=3670016
@@ -484,6 +487,8 @@ Help: hello@cubite.io
 
 ${MANAGED_LINE}
 ${MANAGED_URL}
+${BOOK_LINE}
+${BOOK_URL}
 
 ${TRADEMARK_LINE}
 ********************************************************************************

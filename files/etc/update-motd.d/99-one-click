@@ -43,8 +43,11 @@ Logs:  /var/log/cubite-openedx/ (firstboot.log, setup.log)
 Help:  hello@cubite.io
 EOF
 echo
-echo 'Prefer not to run it yourself? Cubite runs managed Open edX from $1,260 a month for up to 1,000 concurrent learners.'
+echo 'Prefer not to run it yourself? Cubite offers managed Open edX hosting from'
+echo '$1,260 a month for up to 1,000 concurrent learners:'
 echo 'https://cubite.io/open-edx?utm_source=do-1click'
+echo 'Book a free 30-minute call with founder Amir Tadrisi:'
+echo 'https://cubite.io/go/book?src=do-1click-motd'
 echo
 echo 'Open edX is a registered trademark of edX LLC. All Rights Reserved.'
 cat <<EOF
