@@ -1,0 +1,7 @@
+# Input for requirements-build.txt (pip-compile). Tutor and its plugins are
+# published as source distributions built with hatchling. pip does not
+# hash-check build requirements in its isolated build environments, so the
+# installer installs this hash-pinned hatchling first and then installs
+# requirements-tutor.txt with --no-build-isolation.
+-c requirements-tutor.txt
+hatchling

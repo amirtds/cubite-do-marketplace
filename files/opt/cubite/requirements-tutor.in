@@ -1,0 +1,17 @@
+# Input for requirements-tutor.txt (pip-compile). Tutor 22.0.2 is the Open edX
+# Verawood release of Tutor. tutor-mfe decides the MFE image tag, so every
+# plugin in the [full] extra is pinned here too.
+tutor[full]==22.0.2
+tutor-android==22.0.0
+tutor-cairn==22.0.0
+tutor-credentials==22.0.0
+tutor-deck==22.0.0
+tutor-discovery==22.0.0
+tutor-forum==22.0.0
+tutor-indigo==22.0.0
+tutor-jupyter==22.0.0
+tutor-livedeps==22.0.0
+tutor-mfe==22.1.0
+tutor-minio==22.0.0
+tutor-notes==22.0.0
+tutor-xqueue==22.0.0

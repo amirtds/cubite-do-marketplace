@@ -1,0 +1,1 @@
+Installs the Open edX® platform (Verawood) with Tutor 22 on Ubuntu 24.04, with a guided first login. Built and maintained by Cubite.

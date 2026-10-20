@@ -1,0 +1,86 @@
+{
+  "version": "Verawood (Tutor 22.0.2)",
+  "osVersion": "Ubuntu 24.04",
+  "softwareIncluded": [
+    {
+      "name": "Open edX® platform",
+      "version": "Verawood (release/verawood.1 with security fixes)",
+      "releaseNotes": "https://docs.openedx.org/en/latest/community/release_notes/verawood.html",
+      "website": "https://openedx.org",
+      "licenseType": "AGPL-3.0",
+      "licenseLink": "https://github.com/openedx/openedx-platform/blob/master/LICENSE"
+    },
+    {
+      "name": "Tutor",
+      "version": "22.0.2",
+      "releaseNotes": "https://github.com/overhangio/tutor/releases/tag/v22.0.2",
+      "website": "https://docs.tutor.edly.io",
+      "licenseType": "AGPL-3.0",
+      "licenseLink": "https://github.com/overhangio/tutor/blob/release/LICENSE.txt"
+    },
+    {
+      "name": "Tutor plugins (tutor[full]: mfe, indigo, forum and the other official plugins)",
+      "version": "tutor-mfe 22.1.0, all others 22.0.0",
+      "releaseNotes": "https://github.com/overhangio/tutor-mfe/releases/tag/v22.1.0",
+      "website": "https://github.com/overhangio/tutor/blob/release/requirements/plugins.txt",
+      "licenseType": "AGPL-3.0",
+      "licenseLink": "https://github.com/overhangio/tutor/blob/release/LICENSE.txt"
+    },
+    {
+      "name": "Docker Engine",
+      "version": "29.9.1",
+      "releaseNotes": "https://docs.docker.com/engine/release-notes/29/",
+      "website": "https://docs.docker.com/engine/",
+      "licenseType": "Apache-2.0",
+      "licenseLink": "https://github.com/moby/moby/blob/master/LICENSE"
+    },
+    {
+      "name": "Docker Compose",
+      "version": "2.40.3",
+      "releaseNotes": "https://github.com/docker/compose/releases/tag/v2.40.3",
+      "website": "https://docs.docker.com/compose/",
+      "licenseType": "Apache-2.0",
+      "licenseLink": "https://github.com/docker/compose/blob/main/LICENSE"
+    },
+    {
+      "name": "Caddy",
+      "version": "2.11.4",
+      "releaseNotes": "https://github.com/caddyserver/caddy/releases/tag/v2.11.4",
+      "website": "https://caddyserver.com",
+      "licenseType": "Apache-2.0",
+      "licenseLink": "https://github.com/caddyserver/caddy/blob/master/LICENSE"
+    },
+    {
+      "name": "MySQL Community Server",
+      "version": "8.4.11",
+      "releaseNotes": "https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-11.html",
+      "website": "https://www.mysql.com",
+      "licenseType": "GPL-2.0",
+      "licenseLink": "https://github.com/mysql/mysql-server/blob/mysql-8.4.11/LICENSE"
+    },
+    {
+      "name": "MongoDB Community Server",
+      "version": "7.0.39",
+      "releaseNotes": "https://www.mongodb.com/docs/manual/release-notes/7.0/",
+      "website": "https://www.mongodb.com",
+      "licenseType": "SSPL-1.0",
+      "licenseLink": "https://github.com/mongodb/mongo/blob/r7.0.39/LICENSE-Community.txt"
+    },
+    {
+      "name": "Redis",
+      "version": "7.4.10",
+      "releaseNotes": "https://github.com/redis/redis/releases/tag/7.4.10",
+      "website": "https://redis.io",
+      "licenseType": "RSALv2 or SSPL-1.0",
+      "licenseLink": "https://github.com/redis/redis/blob/7.4.10/LICENSE.txt"
+    },
+    {
+      "name": "Meilisearch",
+      "version": "1.36.0",
+      "releaseNotes": "https://github.com/meilisearch/meilisearch/releases/tag/v1.36.0",
+      "website": "https://www.meilisearch.com",
+      "licenseType": "MIT and BUSL-1.1 (Enterprise Edition parts)",
+      "licenseLink": "https://github.com/meilisearch/meilisearch/blob/v1.36.0/LICENSE"
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+#!/bin/bash
+#
+# openedx-image-check: run it as root after upgrading Tutor on a Droplet
+# created from Cubite's DigitalOcean 1-Click image for the Open edX platform,
+# before tutor local launch -I.
+#
+# Droplets from this image run Cubite's patched openedx image: Tutor 22.0.2's
+# image rebuilt with three upstream Open edX security fixes that the
+# release/verawood.1 tag lacks, set in Tutor's config as DOCKER_IMAGE_OPENEDX.
+# Once the installed Tutor builds its own image from a later release, which
+# carries the fixes, this moves the Droplet back to Tutor's image and disables
+# the cubitefixes plugin. Until then it keeps the patched image.
+
+set -uo pipefail
+export LC_ALL=C.UTF-8
+export HOME=/root
+export TUTOR_ROOT=/root/.local/share/tutor
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+TUTOR=/opt/tutor/venv/bin/tutor
+PATCHED_PREFIX=ghcr.io/amirtds/cubite-openedx@sha256:
+UNFIXED_RELEASE=release/verawood.1
+ADVISORIES=https://github.com/amirtds/cubite-do-marketplace/security/advisories
+
+say() { printf '%s\n' "$*"; }
+# Tutor prints an alert on stderr whenever it runs as root, so stderr is
+# dropped. umask 022 as in the setup wizard: containers read Tutor's env files.
+tutor_quiet() { ( umask 022; exec "$TUTOR" "$@" ) 2>/dev/null; }
+
+if [ "$(id -u)" -ne 0 ]; then
+  say "Run openedx-image-check as root."
+  exit 1
+fi
+image="$(tutor_quiet config printvalue DOCKER_IMAGE_OPENEDX)" \
+  && release="$(tutor_quiet config printvalue OPENEDX_COMMON_VERSION)" \
+  && plugins="$(tutor_quiet config printvalue PLUGINS)" \
+  && version="$(tutor_quiet --version)" \
+  || { say "Could not read Tutor's configuration in ${TUTOR_ROOT}. Has openedx-setup run?"; exit 1; }
+
+patched=0
+case "$image" in "$PATCHED_PREFIX"*) patched=1 ;; esac
+# An image the owner set: any DOCKER_IMAGE_OPENEDX in config.yml that is not
+# the patched one. Without the key, Tutor uses its own default image.
+own_image=0
+if [ "$patched" -eq 0 ] && grep -q '^DOCKER_IMAGE_OPENEDX:' "${TUTOR_ROOT}/config.yml" 2>/dev/null; then
+  own_image=1
+fi
+fixes_plugin=0
+case "$plugins" in *"'cubitefixes'"*) fixes_plugin=1 ;; esac
+
+if [ "$release" = "$UNFIXED_RELEASE" ]; then
+  if [ "$patched" -eq 0 ]; then
+    say "DOCKER_IMAGE_OPENEDX is ${image}, not Cubite's patched image. Nothing to change."
+  elif [[ "$version" == *" 22.0.2" ]]; then
+    say "Keeping Cubite's patched openedx image: Tutor's own image for ${release} lacks the fixes."
+  else
+    say "Keeping Cubite's patched openedx image. It was built with Tutor 22.0.2, and"
+    say "this Droplet now has ${version}. Check ${ADVISORIES}"
+    say "for an image built with this Tutor release."
+  fi
+  exit 0
+fi
+
+# The installed Tutor builds its own image from a later release, which
+# carries the fixes.
+saved=0
+if [ "$patched" -eq 1 ]; then
+  tutor_quiet config save --unset DOCKER_IMAGE_OPENEDX > /dev/null \
+    || { say "tutor config save --unset DOCKER_IMAGE_OPENEDX failed."; exit 1; }
+  saved=1
+  say "Moved back to Tutor's own openedx image: $(tutor_quiet config printvalue DOCKER_IMAGE_OPENEDX)"
+elif [ "$own_image" -eq 1 ]; then
+  say "DOCKER_IMAGE_OPENEDX is ${image}, your own image: rebuild it with this Tutor release (tutor images build openedx) before you launch."
+else
+  say "This Droplet already uses Tutor's own openedx image: ${image}"
+fi
+if [ "$fixes_plugin" -eq 1 ]; then
+  tutor_quiet plugins disable cubitefixes > /dev/null \
+    || { say "tutor plugins disable cubitefixes failed."; exit 1; }
+  saved=1
+  say "Disabled the cubitefixes plugin: Tutor's own image build now carries the fixes."
+fi
+case "$release" in
+  release/verawood.*) say "Next: tutor local launch -I" ;;
+  *)
+    if [ "$saved" -eq 1 ]; then
+      # Saving the config rewrote Tutor's env, so launch no longer sees the
+      # move from Verawood and would skip that release's upgrade steps.
+      say "Next, because this is a new Open edX release: tutor local upgrade --from=verawood,"
+      say "then tutor local launch -I"
+    else
+      say "Next: tutor local launch -I"
+    fi
+    ;;
+esac
