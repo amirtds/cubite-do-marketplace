@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # openedx-setup: first-login setup wizard for Cubite's DigitalOcean 1-Click
-# image for the Open edX platform (Open edX Verawood, Tutor 22.0.2).
+# image for the Open edX platform (Open edX Verawood, Tutor 22.0.4).
 #
 # It starts at the first interactive root login (a hook in /root/.bashrc) and
 # can be run again at any time as: openedx-setup
@@ -434,23 +434,24 @@ write_password_file() {
 
 write_summary() {
   local image_note=""
+  # Only on an image that pins Cubite's patched openedx image (none since
+  # Tutor 22.0.4, whose stock images carry the fixes).
   if [ -n "$openedx_image" ]; then
     image_note="
-Security: this Droplet runs Cubite's patched openedx image, Tutor 22.0.2's
-image rebuilt with three upstream fixes (GHSA-c6xg-fh3c-vvhh,
-GHSA-c6fp-f54c-6cv4 and GHSA-g266-6v7f-j465), set as DOCKER_IMAGE_OPENEDX.
-After upgrading Tutor, run openedx-image-check before tutor local launch -I:
-it moves the Droplet back to Tutor's own image once that image has the fixes.
-To build your own openedx image (extra XBlocks, a theme), first name it:
+Security: this Droplet runs Cubite's patched openedx image, Tutor's own image
+rebuilt with upstream security fixes that its Open edX release lacks, set as
+DOCKER_IMAGE_OPENEDX. After upgrading Tutor, run openedx-image-check before
+tutor local launch -I: it moves the Droplet back to Tutor's own image once
+that image has the fixes. To build your own openedx image (extra XBlocks, a
+theme), first name it:
   tutor config save --set DOCKER_IMAGE_OPENEDX=<registry>/<name>:<tag>
-The enabled cubitefixes plugin keeps the fixes in your build. Scripts in
-uploaded HTML and SVG course files, JSInput problems included, no longer run.
+The enabled cubitefixes plugin keeps the fixes in your build.
 
 "
   fi
   cat > "$SUMMARY_FILE" <<EOF
 ********************************************************************************
-The Open edX(R) platform (Verawood) with Tutor 22.0.2 is set up on this Droplet.
+The Open edX(R) platform (Verawood) with Tutor 22.0.4 is set up on this Droplet.
 This image is built and supported by Cubite. DigitalOcean does not build or
 support it.
 
@@ -530,7 +531,7 @@ trap on_interrupt INT TERM
 trap 'exit 129' HUP
 
 say ""
-say "Open edX(R) platform (Verawood) with Tutor 22.0.2: first-time setup"
+say "Open edX(R) platform (Verawood) with Tutor 22.0.4: first-time setup"
 say ""
 say "This image is built and supported by Cubite (hello@cubite.io)."
 say "DigitalOcean does not build or support it."

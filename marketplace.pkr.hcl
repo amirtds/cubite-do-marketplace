@@ -4,7 +4,7 @@
 # Converted with `packer hcl2_upgrade` from marketplace-image.json in
 # github.com/digitalocean/marketplace-partners at commit
 # b70878804ca27c01d5f5e882d26485defbaba210, then adapted for the Open edX
-# platform (Verawood) with Tutor 22.0.2 on Ubuntu 24.04.
+# platform (Verawood) with Tutor 22.0.4 and its stock images on Ubuntu 24.04.
 #
 # Build (from the repository root):
 #   export DIGITALOCEAN_TOKEN=...   # a token for the team that owns the listing
@@ -14,9 +14,12 @@
 # Set the token only in the environment. Never pass it with -var or in a
 # .pkrvars.hcl file, which put it in the shell history, ps output or on disk.
 #
-# A test build of the unpatched stock openedx image (see the security gate in
-# scripts/01-openedx-installer.sh) needs -var allow_unpatched_openedx=true.
-# Its snapshot name ends in -UNPATCHED-TEST and it must never be submitted.
+# The security gate in scripts/01-openedx-installer.sh refuses Tutor 22.0.0
+# to 22.0.3, whose openedx image lacks the fixes for the Open edX security
+# advisories of 2026-10-29. A test build with one of them (or with a release
+# that needs Cubite's patched openedx image, without that image) needs
+# -var allow_unpatched_openedx=true. Its snapshot name ends in
+# -UNPATCHED-TEST and it must never be submitted.
 #
 # The build Droplet is the $6 s-1vcpu-1gb size, so the snapshot's minimum disk
 # is 25 GB and every Droplet plan with enough memory can use the image.
@@ -48,7 +51,7 @@ variable "do_token" {
 variable "allow_unpatched_openedx" {
   type        = bool
   default     = false
-  description = "Test builds only. With Tutor 22.0.0 to 22.0.2 and no files/opt/cubite/openedx-image.env, the installer refuses to build, because the stock overhangio/openedx image lacks the fixes for GHSA-c6xg-fh3c-vvhh and GHSA-c6fp-f54c-6cv4. true builds anyway and names the snapshot ...-UNPATCHED-TEST; such a snapshot must never be submitted."
+  description = "Test builds only. The installer refuses to build with Tutor older than 22.0.4, whose openedx image lacks the fixes for the Open edX security advisories of 2026-10-29, and with a release listed in its PATCHED_IMAGE_RELEASES when files/opt/cubite/openedx-image.env pins no patched image. true builds anyway and names the snapshot ...-UNPATCHED-TEST; such a snapshot must never be submitted."
 }
 
 locals {

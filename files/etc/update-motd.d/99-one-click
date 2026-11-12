@@ -26,7 +26,7 @@ esac
 
 cat <<EOF
 ********************************************************************************
-Open edX(R) platform (Verawood) with Tutor 22.0.2, built and supported by
+Open edX(R) platform (Verawood) with Tutor 22.0.4, built and supported by
 Cubite. DigitalOcean does not build or support this image.
 
 The platform is not set up yet, and it needs a domain name. At your DNS

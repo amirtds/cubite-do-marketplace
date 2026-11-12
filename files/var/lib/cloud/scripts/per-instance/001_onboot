@@ -26,7 +26,7 @@ IMAGE_ENV=/opt/cubite/openedx-image.env
 # The same pattern as the installer's security gate and the setup wizard.
 OPENEDX_IMAGE_PATTERN='^ghcr\.io/amirtds/cubite-openedx@sha256:[0-9a-f]{64}$'
 TUTOR=/opt/tutor/venv/bin/tutor
-# The images a fresh Tutor 22.0.2 platform uses with its default plugins
+# The images a fresh Tutor 22.0.4 platform uses with its default plugins
 # (mfe and indigo). The forum plugin adds no image of its own.
 IMAGES=(openedx permissions mfe caddy meilisearch mongodb mysql redis smtp)
 
@@ -48,7 +48,8 @@ log "First boot started (system booted at $(uptime -s))"
 
 # Optional: Cubite's patched openedx image. The file holds the line
 # OPENEDX_IMAGE=ghcr.io/amirtds/cubite-openedx@sha256:<digest> and only exists
-# in images built with it. The setup wizard reads the same file.
+# in images built with it (none since Tutor 22.0.4, whose stock images carry
+# the fixes). The setup wizard reads the same file.
 openedx_image=""
 if [ -r "$IMAGE_ENV" ]; then
   openedx_image="$(sed -n 's/^OPENEDX_IMAGE=//p' "$IMAGE_ENV" | head -n 1)"

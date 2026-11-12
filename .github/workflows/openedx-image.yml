@@ -2,9 +2,14 @@ name: Patched openedx image
 
 # Builds Tutor 22.0.2's openedx image (with the indigo theme, as the 1-Click
 # runs it) from the release/verawood.1 tag plus three upstream security fixes
-# that no released Tutor image carries yet, and publishes it on ghcr.io. The
-# 1-Click pins the result by digest in files/opt/cubite/openedx-image.env until
-# a Tutor release includes the fixes.
+# that no released Tutor image carried yet, and publishes it on ghcr.io.
+# Version 13 of the 1-Click pinned the result by digest in
+# files/opt/cubite/openedx-image.env. Tutor 22.0.4 builds release/verawood.2,
+# which carries the fixes, so the 1-Click now runs Tutor's stock images and
+# pins nothing. This workflow stays as the template for a release that lacks
+# a fix: set TUTOR_VERSION, BASE_COMMIT, FIXES and FORUM_VERSION, and the
+# plugin's cherry-picks, for that release first. As it stands, a run fails at
+# "Install Tutor", because the lock files now install Tutor 22.0.4.
 
 on:
   push:

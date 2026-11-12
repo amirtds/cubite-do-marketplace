@@ -4,12 +4,14 @@
 # created from Cubite's DigitalOcean 1-Click image for the Open edX platform,
 # before tutor local launch -I.
 #
-# Droplets from this image run Cubite's patched openedx image: Tutor 22.0.2's
-# image rebuilt with three upstream Open edX security fixes that the
-# release/verawood.1 tag lacks, set in Tutor's config as DOCKER_IMAGE_OPENEDX.
-# Once the installed Tutor builds its own image from a later release, which
-# carries the fixes, this moves the Droplet back to Tutor's image and disables
-# the cubitefixes plugin. Until then it keeps the patched image.
+# Droplets from this image run Tutor's stock openedx image, and it only
+# confirms that. A Droplet that runs Cubite's patched openedx image instead
+# (set in Tutor's config as DOCKER_IMAGE_OPENEDX: Tutor's image for the
+# release/verawood.1 tag rebuilt with three upstream Open edX security fixes,
+# which version 13 of this image pinned) keeps it while Tutor still builds its
+# own image from that tag. Once the installed Tutor builds a later release,
+# which carries the fixes (Tutor 22.0.4 builds release/verawood.2), this moves
+# the Droplet back to Tutor's image and disables the cubitefixes plugin.
 
 set -uo pipefail
 export LC_ALL=C.UTF-8
@@ -20,7 +22,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 TUTOR=/opt/tutor/venv/bin/tutor
 PATCHED_PREFIX=ghcr.io/amirtds/cubite-openedx@sha256:
 UNFIXED_RELEASE=release/verawood.1
-ADVISORIES=https://github.com/amirtds/cubite-do-marketplace/security/advisories
+UPDATE_DOCS=https://github.com/amirtds/cubite-do-marketplace#keeping-a-droplet-up-to-date
 
 say() { printf '%s\n' "$*"; }
 # Tutor prints an alert on stderr whenever it runs as root, so stderr is
@@ -50,14 +52,16 @@ case "$plugins" in *"'cubitefixes'"*) fixes_plugin=1 ;; esac
 
 if [ "$release" = "$UNFIXED_RELEASE" ]; then
   if [ "$patched" -eq 0 ]; then
-    say "DOCKER_IMAGE_OPENEDX is ${image}, not Cubite's patched image. Nothing to change."
-  elif [[ "$version" == *" 22.0.2" ]]; then
-    say "Keeping Cubite's patched openedx image: Tutor's own image for ${release} lacks the fixes."
+    say "DOCKER_IMAGE_OPENEDX is ${image}, not Cubite's patched image."
   else
-    say "Keeping Cubite's patched openedx image. It was built with Tutor 22.0.2, and"
-    say "this Droplet now has ${version}. Check ${ADVISORIES}"
-    say "for an image built with this Tutor release."
+    say "Keeping Cubite's patched openedx image: Tutor's own image for ${release} lacks the fixes."
   fi
+  # Tutor 22.0.0 to 22.0.3 build this tag, which lacks the fixes for the Open
+  # edX security advisories of 2026-10-29; the patched image lacks them too.
+  say "Tutor ${version##* } builds ${release}, which lacks the fixes for the Open edX"
+  say "security advisories of 2026-10-29. Upgrade to Tutor 22.0.4 or later, then run"
+  say "openedx-image-check again. How to upgrade:"
+  say "${UPDATE_DOCS}"
   exit 0
 fi
 

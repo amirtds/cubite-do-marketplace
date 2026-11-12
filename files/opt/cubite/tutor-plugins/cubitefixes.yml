@@ -4,7 +4,9 @@
 # .github/workflows/openedx-image.yml builds Cubite's patched openedx image
 # with it. Enable it on a Droplet before building a custom openedx image there,
 # so that the image keeps the fixes. Disable it once Tutor's own image carries
-# them: a cherry-pick that is already applied fails the build.
+# them: a cherry-pick that is already applied fails the build. Tutor 22.0.4
+# builds release/verawood.2, which carries all three, so the 1-Click no longer
+# enables it; it stays as the template for a release that lacks a fix.
 name: cubitefixes
 version: 1.0.0
 patches:

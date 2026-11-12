@@ -2,13 +2,13 @@
 #
 # 01-openedx-installer.sh: build-time installer for Cubite's DigitalOcean
 # 1-Click image for the Open edX platform (Ubuntu 24.04, Open edX Verawood,
-# Tutor 22.0.2). Packer runs it as root on the build Droplet.
+# Tutor 22.0.4). Packer runs it as root on the build Droplet.
 #
 # It installs:
 #   - OS updates;
 #   - Docker Engine 29.x and the Compose v2 plugin from Docker's apt repository
 #     for noble, held there by an apt pin (Docker no longer patches 28.x);
-#   - Tutor 22.0.2 and its plugins in /opt/tutor/venv, hash-checked;
+#   - Tutor 22.0.4 and its plugins in /opt/tutor/venv, hash-checked;
 #   - ufw (configured by 02-ufw-openedx.sh) and unattended-upgrades;
 #   - the first-boot script, the setup wizard and the message of the day.
 #
@@ -24,7 +24,7 @@ export DEBIAN_FRONTEND=noninteractive
 # Keep needrestart from restarting services in the middle of the build.
 export NEEDRESTART_SUSPEND=1
 
-TUTOR_VERSION="22.0.2"
+TUTOR_VERSION="22.0.4"
 TUTOR_VENV="/opt/tutor/venv"
 TUTOR_ROOT_DIR="/root/.local/share/tutor"
 CUBITE_DIR="/opt/cubite"
@@ -41,16 +41,26 @@ apt-get() { command apt-get -o DPkg::Lock::Timeout=600 "$@"; }
 codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}")"
 [ "$codename" = "noble" ] || die "this installer targets Ubuntu 24.04 (noble), found '${codename}'"
 
-# Security gate. The stock overhangio/openedx images of Tutor 22.0.0 to 22.0.2
-# lack the release/verawood fixes for GHSA-c6xg-fh3c-vvhh (stored XSS through
-# Studio uploads, critical) and GHSA-c6fp-f54c-6cv4 (forum API without
-# permission checks). A build with those versions must ship Cubite's patched
-# openedx image, pinned by digest in files/opt/cubite/openedx-image.env. The
-# digest comes from the summary of the "Patched openedx image" workflow run,
-# which checks the image for the fixes before it publishes it. Only a test
-# build may skip the gate (packer build -var allow_unpatched_openedx=true), and
-# its snapshot name then ends in -UNPATCHED-TEST, so that it is never submitted
-# by mistake. First boot and the wizard accept exactly the same pattern.
+# Security gate. Tutor 22.0.0 to 22.0.3 build the openedx image from the
+# release/verawood.1 tag, which lacks the fixes for the five edx-platform
+# security advisories of 2026-10-29, two of them critical
+# (GHSA-2vm4-4f35-jgpv and GHSA-hh7c-hrv9-6qw9). Cubite's patched openedx
+# image, which version 13 of this image pinned, lacks them too. So a real
+# build refuses every Tutor release older than MIN_TUTOR_VERSION. Tutor 22.0.4
+# builds release/verawood.2, which has those fixes and the three that the
+# patched image cherry-picked, so Droplets use Tutor's stock images.
+#
+# The patched-image mechanism stays for a later release whose stock openedx
+# image lacks a needed fix: list that release in PATCHED_IMAGE_RELEASES
+# (space-separated) and pin Cubite's patched image for it, by digest, in
+# files/opt/cubite/openedx-image.env (README.md, Security). The digest comes
+# from the summary of the "Patched openedx image" workflow run, which checks
+# the image for the fixes before it publishes it. First boot and the wizard
+# accept exactly the same pattern. Only a test build may skip the gate
+# (packer build -var allow_unpatched_openedx=true), and its snapshot name then
+# ends in -UNPATCHED-TEST, so that it is never submitted by mistake.
+MIN_TUTOR_VERSION="22.0.4"
+PATCHED_IMAGE_RELEASES=""
 OPENEDX_IMAGE_PATTERN='^ghcr\.io/amirtds/cubite-openedx@sha256:[0-9a-f]{64}$'
 openedx_image=""
 if [ -e "$IMAGE_ENV" ]; then
@@ -58,21 +68,28 @@ if [ -e "$IMAGE_ENV" ]; then
   [[ "$openedx_image" =~ $OPENEDX_IMAGE_PATTERN ]] \
     || die "${IMAGE_ENV} must hold the line OPENEDX_IMAGE=ghcr.io/amirtds/cubite-openedx@sha256:<digest>, copied from the summary of the Patched openedx image workflow run"
 fi
-case "$TUTOR_VERSION" in
-  22.0.0 | 22.0.1 | 22.0.2)
-    if [ -n "$openedx_image" ]; then
-      log "Security gate: Droplets use the patched openedx image ${openedx_image}"
-    elif [ "${CUBITE_ALLOW_UNPATCHED:-false}" = "true" ]; then
-      log "Security gate: TEST BUILD with the unpatched stock openedx image. Never submit this snapshot."
-    else
-      die "security gate: overhangio/openedx:${TUTOR_VERSION} lacks the fixes for GHSA-c6xg-fh3c-vvhh and GHSA-c6fp-f54c-6cv4; bump Tutor to a release that has them, or pin Cubite's patched image in files/opt/cubite/openedx-image.env (test builds only: -var allow_unpatched_openedx=true)"
-    fi
-    ;;
-  *)
-    [ -z "$openedx_image" ] \
-      || die "${IMAGE_ENV} pins an openedx image built with Tutor 22.0.2, but this build installs Tutor ${TUTOR_VERSION}: delete the file if this release carries the fixes, or build and pin an image for it"
-    ;;
-esac
+test_build="${CUBITE_ALLOW_UNPATCHED:-false}"
+# sort -C succeeds when its input is already in order: here, when
+# TUTOR_VERSION is MIN_TUTOR_VERSION or later.
+if ! printf '%s\n' "$MIN_TUTOR_VERSION" "$TUTOR_VERSION" | sort -C -V; then
+  if [ "$test_build" = "true" ]; then
+    log "Security gate: TEST BUILD with Tutor ${TUTOR_VERSION}, whose openedx image lacks the fixes of 2026-10-29. Never submit this snapshot."
+  else
+    die "security gate: Tutor ${TUTOR_VERSION} is older than ${MIN_TUTOR_VERSION}, and its openedx image lacks the fixes for the edx-platform advisories of 2026-10-29 (GHSA-2vm4-4f35-jgpv and GHSA-hh7c-hrv9-6qw9, critical, and three more); install Tutor ${MIN_TUTOR_VERSION} or later (test builds only: -var allow_unpatched_openedx=true)"
+  fi
+elif [[ " ${PATCHED_IMAGE_RELEASES} " == *" ${TUTOR_VERSION} "* ]]; then
+  if [ -n "$openedx_image" ]; then
+    log "Security gate: Droplets use the patched openedx image ${openedx_image}"
+  elif [ "$test_build" = "true" ]; then
+    log "Security gate: TEST BUILD with the unpatched stock openedx image. Never submit this snapshot."
+  else
+    die "security gate: the stock openedx image of Tutor ${TUTOR_VERSION} lacks a needed fix (PATCHED_IMAGE_RELEASES); pin Cubite's patched image in files/opt/cubite/openedx-image.env (test builds only: -var allow_unpatched_openedx=true)"
+  fi
+else
+  [ -z "$openedx_image" ] \
+    || die "${IMAGE_ENV} pins a patched openedx image, but Tutor ${TUTOR_VERSION} runs its stock images, which carry the fixes: delete the file, or, if this release lacks a fix and the pinned image was built for it, list ${TUTOR_VERSION} in PATCHED_IMAGE_RELEASES"
+  log "Security gate: Tutor ${TUTOR_VERSION} (${MIN_TUTOR_VERSION} or later): Droplets use Tutor's stock images"
+fi
 
 # The apt-daily timers can start unattended-upgrades in the middle of the
 # build and hold the dpkg lock. Stop them for the rest of this boot only (they
