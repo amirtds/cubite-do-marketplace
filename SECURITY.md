@@ -25,13 +25,13 @@ Problems in the software the image installs belong upstream:
 
 ## Supported versions
 
-Only the latest image version on the DigitalOcean Marketplace is supported. Today that is Open edX Verawood with Tutor 22.0.2 on Ubuntu 24.04. Each named Open edX release gets a new image; if a rebuild is more than 8 weeks late, the listing is relabelled as outdated or delisted and this repository is archived.
+Only the latest image version on the DigitalOcean Marketplace is supported. Today that is Open edX Verawood (`release/verawood.2`) with Tutor 22.0.4 and its stock images on Ubuntu 24.04. Each named Open edX release gets a new image; if a rebuild is more than 8 weeks late, the listing is relabelled as outdated or delisted and this repository is archived.
 
 ## What the image does to stay safe
 
 - No secrets, Tutor configuration or Docker images are baked into the snapshot. Each Droplet generates its own secrets the first time its owner runs the setup wizard.
 - Tutor and its dependencies are installed with pip hash checking, and Docker comes from Docker's signed apt repository, held on the 29.x line that Docker still patches.
-- The build fails if the openedx image would lack known critical fixes: with Tutor 22.0.0 to 22.0.2 it needs Cubite's patched image, pinned by digest and public, and only test builds, whose snapshots are named `-UNPATCHED-TEST` and never submitted, can skip that.
+- The build fails if the openedx image would lack known critical fixes: it refuses Tutor 22.0.0 to 22.0.3, whose openedx image lacks the fixes for the Open edX security advisories of 2026-10-29, and a release whose stock image lacks a fix needs Cubite's patched image, pinned by digest and public. Only test builds, whose snapshots are named `-UNPATCHED-TEST` and never submitted, can skip that.
 - Only ports 22, 80 and 443 are open, and Ubuntu security updates install automatically.
 - Logs that can contain passwords, the Tutor configuration and the admin password file are readable by root only.
 
