@@ -60,15 +60,15 @@ Tutor's configuration, including this Droplet's passwords and keys, is in `/root
 
 ## 7. Updates
 
-Ubuntu security updates install automatically. Open edX and Tutor updates and security notices are posted on the image's GitHub page, https://github.com/amirtds/cubite-do-marketplace. To apply a Tutor 22.0.x release:
+Ubuntu security updates install automatically. Open edX and Tutor updates and security notices are posted on the image's GitHub page, https://github.com/amirtds/cubite-do-marketplace. To apply a Tutor 22.0.x release, back up `/root/.local/share/tutor`, then run:
 
 ```
-/opt/tutor/venv/bin/pip install --upgrade "tutor[full]>=22.0.0,<23.0.0"
+/opt/tutor/venv/bin/pip install --upgrade --upgrade-strategy eager "tutor[full]>=22.0.4,<23.0.0"
 openedx-image-check
 tutor local launch -I
 ```
 
-This image runs Cubite's patched openedx image: Tutor 22.0.2's image rebuilt with three upstream Open edX security fixes that the Verawood.1 release lacks (GHSA-c6xg-fh3c-vvhh, GHSA-c6fp-f54c-6cv4 and GHSA-g266-6v7f-j465). `openedx-image-check` keeps it until Tutor's own image carries the fixes, then moves the Droplet back to Tutor's image. One of the fixes serves course files with a sandbox policy, so scripts in uploaded HTML or SVG files, JSInput problems included, no longer run. The course waffle flag `course_assets.allow_unsafe_asset_rendering` turns that off for one course, and reopens the vulnerability for it.
+Droplets created from the previous version of this image (Tutor 22.0.2) run Cubite's patched openedx image, which lacks the fixes for the Open edX security advisories of 2026-10-29. The same commands move them in place to Tutor 22.0.4 and its stock images, which have those fixes: `openedx-image-check` switches the Droplet back to Tutor's image and disables the cubitefixes plugin, and the launch reindexes Studio search.
 
 ## 8. Support
 

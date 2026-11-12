@@ -1,10 +1,10 @@
 {
-  "version": "Verawood (Tutor 22)",
+  "version": "Verawood.2 (22.0.4)",
   "osVersion": "Ubuntu 24.04",
   "softwareIncluded": [
     {
       "name": "Open edX® platform",
-      "version": "Verawood (release/verawood.1 with security fixes)",
+      "version": "Verawood (release/verawood.2)",
       "releaseNotes": "https://docs.openedx.org/en/latest/community/release_notes/verawood.html",
       "website": "https://openedx.org",
       "licenseType": "AGPL-3.0",
@@ -12,23 +12,23 @@
     },
     {
       "name": "Tutor",
-      "version": "22.0.2",
-      "releaseNotes": "https://github.com/overhangio/tutor/releases/tag/v22.0.2",
+      "version": "22.0.4",
+      "releaseNotes": "https://github.com/overhangio/tutor/releases/tag/v22.0.4",
       "website": "https://docs.tutor.edly.io",
       "licenseType": "AGPL-3.0",
       "licenseLink": "https://github.com/overhangio/tutor/blob/release/LICENSE.txt"
     },
     {
       "name": "Tutor plugins (tutor[full]: mfe, indigo, forum and the other official plugins)",
-      "version": "tutor-mfe 22.1.0, all others 22.0.0",
-      "releaseNotes": "https://github.com/overhangio/tutor-mfe/releases/tag/v22.1.0",
+      "version": "tutor-mfe 22.1.2, tutor-indigo 22.1.0, the others 22.0.0 or 22.0.1",
+      "releaseNotes": "https://github.com/overhangio/tutor-mfe/releases/tag/v22.1.2",
       "website": "https://github.com/overhangio/tutor/blob/release/requirements/plugins.txt",
       "licenseType": "AGPL-3.0",
       "licenseLink": "https://github.com/overhangio/tutor/blob/release/LICENSE.txt"
     },
     {
       "name": "Docker Engine",
-      "version": "29.9.1",
+      "version": "29.9.3",
       "releaseNotes": "https://docs.docker.com/engine/release-notes/29/",
       "website": "https://docs.docker.com/engine/",
       "licenseType": "Apache-2.0",
@@ -44,8 +44,8 @@
     },
     {
       "name": "Caddy",
-      "version": "2.11.4",
-      "releaseNotes": "https://github.com/caddyserver/caddy/releases/tag/v2.11.4",
+      "version": "2.11.7",
+      "releaseNotes": "https://github.com/caddyserver/caddy/releases/tag/v2.11.7",
       "website": "https://caddyserver.com",
       "licenseType": "Apache-2.0",
       "licenseLink": "https://github.com/caddyserver/caddy/blob/master/LICENSE"
