@@ -54,6 +54,12 @@ variable "allow_unpatched_openedx" {
   description = "Test builds only. The installer refuses to build with Tutor older than 22.0.4, whose openedx image lacks the fixes for the Open edX security advisories of 2026-10-29, and with a release listed in its PATCHED_IMAGE_RELEASES when files/opt/cubite/openedx-image.env pins no patched image. true builds anyway and names the snapshot ...-UNPATCHED-TEST; such a snapshot must never be submitted."
 }
 
+variable "region" {
+  type        = string
+  default     = "tor1"
+  description = "Build region. DigitalOcean offers basic s- sizes to this account in some regions and not others, and that changes (2026-10-19: none in nyc1 and nyc3; 2026-11-12: none in tor1). Check GET /v2/sizes and pass -var region=<slug>; test the snapshot in the same region."
+}
+
 locals {
   # Snapshot names are the only thing the Vendor Portal picker shows, so they
   # are stamped to the minute (UTC), and a test build of the unpatched stock
@@ -63,13 +69,11 @@ locals {
   snapshot_name = "cubite-openedx-verawood-tutor22-2404-${local.build_time}${local.name_suffix}"
 }
 
-# Region: on 2026-10-19 nyc1 and nyc3 offered no basic s- sizes to this
-# account; tor1 offers both the s-1vcpu-1gb build size and the s-4vcpu-8gb
-# test size.
+# Region: var.region (see its description).
 source "digitalocean" "openedx" {
   api_token          = var.do_token
   image              = "ubuntu-24-04-x64"
-  region             = "tor1"
+  region             = var.region
   size               = "s-1vcpu-1gb"
   ssh_username       = "root"
   droplet_name       = "cubite-openedx-build-${local.build_time}"
