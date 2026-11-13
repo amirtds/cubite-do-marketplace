@@ -30,7 +30,7 @@ The setup wizard starts on its own. It:
 - starts the Open edX platform with HTTPS certificates from Let's Encrypt;
 - creates your admin account.
 
-Setup takes up to an hour on an 8 GB Basic Droplet, most of it database setup (58 minutes in Cubite's test of this image on 2026-10-20); the wizard prints a progress line at least every two minutes. You can stop it at any time and continue later with: `openedx-setup`. If the connection drops while the platform is starting, the launch keeps running; log in again later and the wizard completes setup.
+Setup takes up to an hour on an 8 GB Basic Droplet, most of it database setup (40 minutes in Cubite's test of this image on 2026-11-12); the wizard prints a progress line at least every two minutes. You can stop it at any time and continue later with: `openedx-setup`. If the connection drops while the platform is starting, the launch keeps running; log in again later and the wizard completes setup.
 
 ## 4. Open your platform
 
@@ -69,6 +69,8 @@ tutor local launch -I
 ```
 
 Droplets created from the previous version of this image (Tutor 22.0.2) run Cubite's patched openedx image, which lacks the fixes for the Open edX security advisories of 2026-10-29. The same commands move them in place to Tutor 22.0.4 and its stock images, which have those fixes: `openedx-image-check` switches the Droplet back to Tutor's image and disables the cubitefixes plugin, and the launch reindexes Studio search.
+
+Two of the fixes in Verawood.2 change behaviour. Course files are served with a sandbox policy, so scripts in uploaded HTML or SVG files, JSInput problems included, no longer run; the course waffle flag `course_assets.allow_unsafe_asset_rendering` turns that off for one course, and reopens the vulnerability for it. XBlock handlers reached without signing in now answer only when the handler is listed in the `XBLOCK_NOAUTH_HANDLER_ALLOWLIST` setting, so a third-party XBlock that relies on one needs its handler added there.
 
 ## 8. Support
 
